@@ -3,14 +3,6 @@ node_modules
 dist
 !packages/create-evershop-app/sample/extensions/sample/dist
 !packages/create-evershop-app/sample/themes/sample/dist
-/extensions/*
-!extensions/agegate
-!extensions/azure_file_storage
-!extensions/google_login
-!extensions/s3_file_storage
-!extensions/resend
-!extensions/sendgrid
-!extensions/product_review
 /themes
 .idea/*
 .evershop
@@ -35,7 +27,6 @@ playwright/.cache
 .prettierrc
 mysqlToPostgres.js
 /docs
-extensions
 /specifications
 /wiki
 /design-kit
@@ -52,3 +43,6 @@ jmeter.log
 stress_test.py
 theme-lab
 asset-library
+
+# Gentle AI local skill registry (regenerated automatically)
+.atl/

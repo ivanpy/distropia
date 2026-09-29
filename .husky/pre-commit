@@ -2,3 +2,8 @@
 . "$(dirname -- "$0")/_/husky.sh"
 
 #FORCE_COLOR=1 npm run lint
+
+# AI code review of staged files (Gentleman Guardian Angel); skipped when gga is not installed
+if command -v gga >/dev/null 2>&1; then
+  gga run || exit 1
+fi
