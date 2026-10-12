@@ -1,0 +1,7 @@
+extend type ProductPrice {
+  """
+  True when prices are hidden for the current (approved wholesale) customer.
+  When true, `regular` and `special` carry value 0 and a placeholder text.
+  """
+  isMasked: Boolean!
+}
