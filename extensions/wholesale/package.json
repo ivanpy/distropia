@@ -1,0 +1,12 @@
+{
+  "name": "evershop-wholesale",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wholesale (B2B) extension for EverShop: tiered quantity rules and WhatsApp quotes",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "tsc": "tsc -p tsconfig.json --noEmit"
+  },
+  "license": "GPL-3.0"
+}
