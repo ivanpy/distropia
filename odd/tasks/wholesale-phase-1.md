@@ -25,7 +25,7 @@ Phase 1 of the wholesale SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). 
 ## Tasks
 
 - [x] **W1** Scaffold + config (T-1.1 … T-1.5, T-1.7) — route: delegated direct (writer trigger: 2+ non-trivial files; preparation reading of extension loading) — commit `bd9a63f2`
-- [ ] **W1b** `.env.example` (T-1.6) — blocked: writer was denied write access to `.env*` paths by permission settings; needs user decision
+- [x] **W1b** `.env.example` (T-1.6) — global deny rules `Read/Edit(.env.*)` block the agent; user created `extensions/wholesale/.env.example` (location per SDD `02_whatsapp_cloud_api_y_mock.md:172`) from the parent-provided template. Content not readable by the agent (deny rule); placement verified via `git status`.
 - [x] **W2** Migration `Version-1.0.0.ts` + integration test (T-1.8 … T-1.17) — route: delegated direct (writer + preparation trigger) — commit `7acb36f0`
 
 ## Acceptance criteria
@@ -53,6 +53,9 @@ Phase 1 of the wholesale SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). 
 - Open: `package-lock.json` does not yet list the `extensions/*` workspace (next `npm install` adds it).
 - RDD: assess on `889e71d6..HEAD` → medium (`configuration_change`), `review_due: slice_budget_reached`.
 
+- Native review (granted): lineage `review-8a51f92d41b36915`, lens `review-reliability`, **approved**, acknowledged (authority burned). Reviewed boundary advances to `f4b2960b`.
+- Non-blocking follow-ups from the review (separate later work): WARNING `R3-empty-product-fixture` (test fixture may not exercise product FK when catalog is empty), WARNING `R3-taxid-partial-unique-unproved` (partial unique index on tax_id not proven by a violating insert); SUGGESTIONS: bootstrap defaults untested, E.164 boundary cases, FK ON DELETE behaviour unproved, quote phone unchecked, test takes locks on the live DB.
+
 ## Next step
 
-Native review of W1+W2, then user decision on T-1.6 (`.env.example`).
+Phase 1 complete. Next: Phase 2 (logic and security) as a new feature document.
