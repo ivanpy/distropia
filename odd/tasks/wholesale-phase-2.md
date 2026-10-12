@@ -26,10 +26,15 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 - **D-P2-1** `wholesale_quote` → `customer` FK is `ON DELETE RESTRICT` (deferred from Phase 1 review). Keep quote history vs allow customer deletion. Any change needs a new `Version-1.0.1.ts`.
 
+## Decisions
+
+- **D-P2-2 (2026-10-12, user):** keep the global `Price.text` override — masked amounts print `Subject to quote` from the API itself; real amounts format identically to core (parity-tested). W2 reuses `MASKED_AMOUNT` for cart prices.
+
 ## Tasks (work units)
 
 - [x] **W1** Price masking core: T-2.10 (RED), T-2.10a `isWholesaleViewer`, T-2.10b `resolveCorePrice` + parity test, T-2.10c `ProductPrice.isMasked` + `Product.price` override — route: delegated direct (writer + preparation trigger) — commit `50f3477c`
-- [ ] **W2** Cart masking + no price filters/sort for wholesale: T-2.10d, T-2.10e
+- [x] **W2** Cart masking + no price filters/sort for wholesale: T-2.10d, T-2.10e — route: delegated direct — commits `7dd425f0`, `f2b45738`, `4636a922`
+- [ ] **W2b** REST cart endpoints (`POST /api/carts/:id/items`, `addMineCartItem`, `updateQty`) return `item.export()` with raw prices — pending user decision
 - [ ] **W3** B2B registration: T-2.3 (RED), T-2.4, T-2.4c, T-2.5, T-2.4b
 - [ ] **W4** Approval: T-2.6, T-2.7, T-2.8
 - [ ] **W5** Product rules: T-2.9, T-2.10f, T-2.11 … T-2.17
@@ -66,6 +71,15 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Incident: dev watcher again removed core `dist` (Windows rename bug); writer recovered with `npm run compile`.
 - Follow-up: pin `@evershop/evershop` version (ADR-06 risk: replicated resolvers).
 
+### W2 (`7dd425f0`, `f2b45738`, `4636a922`)
+
+- `copyfiles@2.4.1` declared as devDependency (fixes R3-copyfiles-undeclared).
+- T-2.10d: RED 3/3 (`isMasked` missing; approved customer saw `$100.25`) → GREEN. 25 cart price fields masked (Cart 12, CartItem 13) + shipping costs; `isMasked` on Cart and CartItem; schema-walk drift guard fails if core adds a Price field reachable from Cart.
+- T-2.10e: RED 2 (approved customer got `min_price`/`max_price`/`ob` and `priceRange`) → GREEN. `productCollectionFilters` processor (bootstrap) wraps price filter/sort callbacks; decision at call time from an AsyncLocalStorage flag set by resolver wrappers (`Query.products`, `productSearch`, `Category.products`, `Collection.products`, `ProductListing.products`) that call compiled core resolvers; price filters ignored; `priceRange` null for wholesale.
+- Suite 81/81 (writer); parent after clean recompile 81/81. Parent live check: pages + price filter/sort URLs 200; anonymous price sort still applied with real prices.
+- Incident: dev watcher left `dist.compiling` again; parent stopped dev, cleaned, recompiled. Writer sourced `.env` into a shell for a leftover-row check (conflicts with the user's `.env*` deny intent) — reported to user.
+- Phase 4 follow-ups: hide price sort option in `ProductSorting.tsx`; mini-cart/cart UI read `Cart.isMasked`.
+
 ## Next step
 
-W2 (cart masking, price filters/sort).
+User decision on W2b (REST cart price leak), then W3.
