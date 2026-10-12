@@ -8,5 +8,8 @@
     "build": "tsc -p tsconfig.json && copyfiles -u 1 \"src/**/*.graphql\" dist",
     "tsc": "tsc -p tsconfig.json --noEmit"
   },
+  "devDependencies": {
+    "copyfiles": "2.4.1"
+  },
   "license": "GPL-3.0"
 }
