@@ -1,0 +1,16 @@
+extend type Cart {
+  """
+  True when cart amounts are hidden for the current (approved wholesale)
+  customer. When true, every price of the cart, its items and its shipping
+  methods carries value 0 and a placeholder text.
+  """
+  isMasked: Boolean!
+}
+
+extend type CartItem {
+  """
+  True when the item amounts are hidden for the current (approved wholesale)
+  customer. Same value as `Cart.isMasked`.
+  """
+  isMasked: Boolean!
+}
