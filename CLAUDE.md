@@ -148,3 +148,39 @@ The pitfalls above are syntactic — caught by lint or first compile. The ones b
 - Dev server: `npm run dev` (uses `webpack-dev-middleware` + HMR).
 - Build for production: `npm run build` then `npm run start`.
 - Never bypass `husky` hooks (`--no-verify`) or skip type/lint failures without an explicit go-ahead.
+
+# Directrices de Desarrollo - Proyecto EverShop (Módulo Mayorista B2B)
+
+## 1. Arquitectura y Restricciones
+- Plataforma: EverShop (Node.js 20+, TypeScript, React SSR, GraphQL, PostgreSQL).
+- Regla de Oro: NUNCA modificar el core de EverShop. Toda la funcionalidad mayorista se implementa de forma desacoplada dentro de `extensions/wholesale/`.
+- Compilación: El código fuente reside en `extensions/wholesale/src/` y compila a `extensions/wholesale/dist/`.
+- Bootstrap: Eventos y hooks deben registrarse únicamente en `bootstrap.ts` antes de la Fase 5 del arranque.
+
+## 2. Base de Datos y Migraciones
+- Cliente: Utilizar `@evershop/postgres-query-builder`.
+- Convención de nombres: Columnas en la BD en `snake_case`; entidades y resolutores GraphQL en `camelCase`.
+- Migraciones: Archivos en `extensions/wholesale/src/migration/Version-X.Y.Z.ts` (guion, no guion bajo) con sentencias SQL idempotentes (`IF NOT EXISTS`, constraints y triggers protegidos con bloques `DO $$`). Se ejecutan automáticamente al arrancar (`npm run dev` / `npm run start`); no existe un script `migrate`.
+- Claves Públicas: Exponer siempre `uuid` hacia el frontend/APIs, nunca las IDs autoincrementales primarias.
+
+## 3. Seguridad y WhatsApp API
+- Mitigación de Costos/Bots: Todo endpoint que emita cotizaciones (`/api/wholesale/request-quote`) debe ejecutar:
+  1. Verificación de token Cloudflare Turnstile / reCAPTCHA.
+  2. Autenticación JWT y validación de cliente mayorista aprobado (`is_wholesale_approved = true`, columna booleana releída de la base de datos).
+  3. Rate Limiting estricto (3/hora por usuario, 15/hora por IP).
+  4. Debounce / Idempotencia.
+- Teléfono Seguro: El número para el mensaje de WhatsApp se lee exclusivamente de la base de datos (`customer.phone`), nunca del payload de la petición.
+- Desarrollo Local: Fuera de producción, si `WHATSAPP_MOCK_ENABLED=true` o falta `WHATSAPP_ACCESS_TOKEN`, usar el servicio de mensajería en modo Mock (imprimir en consola y habilitar `/api/wholesale/mock-action`).
+- Producción: Con `NODE_ENV=production` el Mock NUNCA se activa, aunque `WHATSAPP_MOCK_ENABLED=true`. `assertMessagingConfig()` debe fallar el arranque si faltan `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` o `WHATSAPP_WEBHOOK_VERIFY_TOKEN` (fail closed: un mock silencioso significaría presupuestos "enviados" que nadie recibe).
+
+## 4. Convenciones de Código
+- TypeScript en modo estricto (`strict: true`).
+- Controladores REST definidos mediante `route.json` y middlewares modulares de Express.
+- Resolutores GraphQL administrativos deben usar el sufijo `.admin.graphql` y `.admin.resolvers.ts`.
+
+## 5. Comandos Frecuentes
+- Iniciar en desarrollo: `npm run dev` (compila `extensions/wholesale/src` a `dist` con SWC al arrancar y ejecuta las migraciones pendientes).
+- Compilar la extensión: `npm run build --prefix extensions/wholesale` (`tsc`); chequeo de tipos sin emitir: `npm run tsc --prefix extensions/wholesale`.
+- Build de producción de la tienda (no de la extensión): `npm run build` en la raíz.
+- Tests de la extensión: compilar y luego `ALLOW_CONFIG_MUTATIONS=true NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js extensions/wholesale`.
+- Migraciones: corren al arrancar; no hay comando separado.
