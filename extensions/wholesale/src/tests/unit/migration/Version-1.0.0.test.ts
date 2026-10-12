@@ -84,8 +84,12 @@ describeDb('wholesale migration Version-1.0.0', () => {
     client = await pool.connect();
     await client.query('BEGIN');
     await migrate(client);
+    // Own product fixture: never depend on seeded catalog data. Only the
+    // NOT NULL columns without defaults (sku, price) are required.
     const product = await client.query(
-      'SELECT "product_id" FROM "product" ORDER BY "product_id" LIMIT 1'
+      `INSERT INTO "product" ("sku", "price")
+       VALUES ($1, 10) RETURNING "product_id"`,
+      [`WHOLESALE-TEST-${randomUUID()}`]
     );
     productId = product.rows[0].product_id as number;
   });
@@ -264,6 +268,26 @@ describeDb('wholesale migration Version-1.0.0', () => {
       [`wholesale-test-${randomUUID()}@example.com`]
     );
     expect(error.code).toBe('23505');
+    expect(error.constraint).toBe('CUSTOMER_TAX_ID_WHOLESALE_UNIQUE');
+  });
+
+  it('scopes tax id uniqueness to wholesale requests with a tax id', async () => {
+    const insert = `INSERT INTO "customer"
+      ("email", "password", "tax_id", "wholesale_requested_at")
+      VALUES ($1, 'x', $2, $3)`;
+    const email = () => `wholesale-test-${randomUUID()}@example.com`;
+    // Outside the predicate (no wholesale request): duplicates are allowed,
+    // both against each other and against the wholesale account above.
+    await client.query(insert, [email(), 'TEST-TAX-1', null]);
+    await client.query(insert, [email(), 'TEST-TAX-1', null]);
+    // Outside the predicate (no tax id): many requesters may coexist.
+    await client.query(insert, [email(), null, new Date()]);
+    await client.query(insert, [email(), null, new Date()]);
+    // Inside the predicate with a fresh tax id: first wins, second collides.
+    await client.query(insert, [email(), 'TEST-TAX-2', new Date()]);
+    const error = await expectFailure(insert, [email(), 'TEST-TAX-2', new Date()]);
+    expect(error.code).toBe('23505');
+    expect(error.constraint).toBe('CUSTOMER_TAX_ID_WHOLESALE_UNIQUE');
   });
 
   it('validates wholesale_product_rule quantities and tiers', async () => {
