@@ -36,8 +36,9 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 - [x] **W1** Price masking core: T-2.10 (RED), T-2.10a `isWholesaleViewer`, T-2.10b `resolveCorePrice` + parity test, T-2.10c `ProductPrice.isMasked` + `Product.price` override — route: delegated direct (writer + preparation trigger) — commit `50f3477c`
 - [x] **W2** Cart masking + no price filters/sort for wholesale: T-2.10d, T-2.10e — route: delegated direct — commits `7dd425f0`, `f2b45738`, `4636a922`
-- [ ] **W2b** REST cart masking: T-2.31 (`POST /api/carts/:id/items`, `addMineCartItem`, `updateQty`) — ~250 lines — **next**
-- [ ] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — ~1,000 lines (single additive migration file + test)
+- [x] **W2b** REST cart masking: T-2.31 — route: delegated direct (writer + preparation trigger) — commit `8bbec4af` (+503) — review approved
+
+- [ ] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — ~1,000 lines (single additive migration file + test) — **next**
 - [ ] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — ~550 lines
 - [ ] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 — ~300 lines
 - [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
@@ -87,6 +88,21 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Incident: dev watcher left `dist.compiling` again; parent stopped dev, cleaned, recompiled. Writer sourced `.env` into a shell for a leftover-row check (conflicts with the user's `.env*` deny intent) — reported to user.
 - Phase 4 follow-ups: hide price sort option in `ProductSorting.tsx`; mini-cart/cart UI read `Cart.isMasked`.
 
+### Review 2026-10-14 — phase 1 + W1 + W2 + doc reconcile (`f045916..7e4c68aa`)
+
+- Lineage `review-70d0288d38f8c511`, medium, lens reliability; consent granted; approved and acknowledged.
+- Advisory (later work): `R3-db-suites-skip-silently` (`tests/unit/graphql/storefrontSchema.ts:23`, suggestion); `R3-price-range-narrowing-vacuous` (`tests/unit/graphql/priceFilters.test.ts:160-161`, warning).
+
+### W2b (`8bbec4af`)
+
+- One passive middleware per core route, `api/<routeId>/[<handler>]maskWholesaleCartAmounts.ts`, rewriting `response.$body` before core `apiResponse`: `addCartItem`, `addMineCartItem`, `updateCartItemQty`, `updateMineCartItemQty`, `removeCartItem`, `removeMineCartItem`, `createCart`.
+- REST masked representation: amount keys → `null` (not 0, so no client reads it as free), item gains `is_masked: true`; extra regex guard on price/total/amount/discount/cost/fee keys. B2C/anonymous bodies untouched. Lookup failure → `next(err)` → 500 without prices.
+- RED observed 4 failed / 11 passed → GREEN 15/15. Drift guards: every core `cartItemFields` key classified; set of core API routes using `.export()` equals covered set; core `sortMiddlewares` order handler < mask < `apiResponse` (core silently drops a middleware with a missing dependency).
+- Writer: build ok, `tsc` clean, suite 96/96, `packages/evershop/src` diff empty. Parent spot check: rebuild + suite 96/96.
+- Review: assess medium, `slice_budget_reached`; lineage `review-d038e7e5714bfa99`, consent granted, approved and acknowledged. Advisory (later work): `R3-shape-fail-open` (`maskCartRestResponse.ts:80-93`, warning — an unexpected body shape passes through unmasked); `R3-nested-amounts` (`:72-74`, suggestion); `R3-dist-coupling` (`cartRestMasking.test.ts:29-31`, suggestion).
+- Pending: live HTTP check on the dev server (approved customer `POST /api/cart/mine/items`).
+- Follow-ups: masking of order/checkout REST responses (`cartCheckout`, `createOrder`) in a later phase; masking follows the viewer, not the cart owner (same as GraphQL); wiki entry on extension middleware for core API routes.
+
 ## Next step
 
-Implement W2b (T-2.31), then W2c. Task list reconciled with SDD v2.1 on 2026-10-14.
+Live HTTP check of W2b, then W2c (T-2.32, T-2.33, T-2.34, T-2.52). Task list reconciled with SDD v2.1 on 2026-10-14.
