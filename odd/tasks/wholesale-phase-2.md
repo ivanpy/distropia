@@ -4,7 +4,7 @@ Locator: `odd/tasks/wholesale-phase-2.md` · Engram mirror: `odd/wholesale-phase
 
 ## Objective
 
-The whole wholesale domain works at service and API level, without real WhatsApp: masked prices for approved wholesale customers, B2B registration and approval, product rules, quote creation, and anti-bot protections on `POST /api/wholesale/request-quote`.
+The whole quote domain works at service and API level, without real WhatsApp (SDD v2.1, amended 2026-10-13): masked prices on every surface (GraphQL and REST cart), runtime modes, schema 1.1.0, B2B registration with validated RUC, audited approval, product lines with tiers, per-product wholesale data, quote calculation (incl. SIFEN tax breakdown and canonical states), and anti-bot protections on `POST /api/wholesale/request-quote`.
 
 ## Problem / why
 
@@ -12,7 +12,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 ## Scope
 
-- In: SDD tasks T-2.3 … T-2.30 (T-2.1/T-2.2 spikes already resolved as ADR-06/ADR-07).
+- In: SDD v2.1 Phase 2 tasks (`docs/sdd-wholesale/04_planificacion_y_tareas/02_checklist_tareas.md` § Fase 2): T-2.3 … T-2.52 minus replaced ones (T-2.5 → T-2.35, T-2.9 → T-2.40, T-2.10f → T-2.44, T-2.18 → T-2.45). T-2.1/T-2.2 spikes resolved as ADR-06/ADR-07 (ADR-07 amended by ADR-12).
 - Out: WhatsApp sending, webhook, order creation (Phase 3); UI (Phase 4). No changes under `packages/evershop/src`.
 
 ## Constraints
@@ -28,19 +28,22 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 ## Decisions
 
+- **D-P2-3 (2026-10-12, user):** W2b = extension API middleware that masks amounts in core REST cart responses for approved wholesale customers (T-2.31).
+- **D-P2-4 (2026-10-13, user):** SDD replanned to v2.1 — Alt A (ADR-13), canonical states (ADR-14), NRE (ADR-15), payment void only (ADR-16); G-1 … G-11 confirmed. Phase 2 gains W2b and W2c; open minor points P-1 … P-11 live in `01_plan_de_fases.md` (P-5 still unconfirmed, not Phase 2).
 - **D-P2-2 (2026-10-12, user):** keep the global `Price.text` override — masked amounts print `Subject to quote` from the API itself; real amounts format identically to core (parity-tested). W2 reuses `MASKED_AMOUNT` for cart prices.
 
 ## Tasks (work units)
 
 - [x] **W1** Price masking core: T-2.10 (RED), T-2.10a `isWholesaleViewer`, T-2.10b `resolveCorePrice` + parity test, T-2.10c `ProductPrice.isMasked` + `Product.price` override — route: delegated direct (writer + preparation trigger) — commit `50f3477c`
 - [x] **W2** Cart masking + no price filters/sort for wholesale: T-2.10d, T-2.10e — route: delegated direct — commits `7dd425f0`, `f2b45738`, `4636a922`
-- [ ] **W2b** REST cart endpoints (`POST /api/carts/:id/items`, `addMineCartItem`, `updateQty`) return `item.export()` with raw prices — pending user decision
-- [ ] **W3** B2B registration: T-2.3 (RED), T-2.4, T-2.4c, T-2.5, T-2.4b
-- [ ] **W4** Approval: T-2.6, T-2.7, T-2.8
-- [ ] **W5** Product rules: T-2.9, T-2.10f, T-2.11 … T-2.17
-- [ ] **W6** Quote: T-2.18 … T-2.22
-- [ ] **W7** Security middlewares: T-2.23 … T-2.28
-- [ ] **W8** `POST /api/wholesale/request-quote` + trust proxy: T-2.29, T-2.30
+- [ ] **W2b** REST cart masking: T-2.31 (`POST /api/carts/:id/items`, `addMineCartItem`, `updateQty`) — ~250 lines — **next**
+- [ ] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — ~1,000 lines (single additive migration file + test)
+- [ ] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — ~550 lines
+- [ ] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 — ~300 lines
+- [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
+- [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
+- [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
+- [ ] **W8** `POST /api/wholesale/request-quote` + trust proxy: T-2.29, T-2.30 — ~250 lines
 
 ## Acceptance criteria (phase exit)
 
@@ -48,7 +51,11 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Integration tests of `request-quote`: every error code in the contracts table reproduces.
 - Concurrency: 5 parallel requests with the same `Idempotency-Key` → 1 quote.
 - Rate limit: 4th request in one hour → 429.
-- An approved B2B customer gets no prices from storefront GraphQL.
+- An approved B2B customer gets no amounts from storefront GraphQL **nor** REST cart responses.
+- `getRuntimeMode` / `assertRuntimeConfig` covered by matrix tests; `Version-1.1.0.ts` re-runnable; audit log rejects `UPDATE`/`DELETE`.
+- RUC format + check digit in every mode; DNIT mock even/odd in dev.
+- `calculateQuote`: CIRCUITO §3.B example, mix, minimum, per-item VAT, null weight; `computeTaxBreakdown` spec example (`dTotOpe = 11.550.000`).
+- Special freight → `AWAITING_SHIPPING_QUOTE` without WhatsApp; `CLAUDE.md` §3 amended for demo mode (T-2.52).
 - `git diff --stat -- packages/evershop/src` empty.
 
 ## Delivery
@@ -82,4 +89,4 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 ## Next step
 
-User decision on W2b (REST cart price leak), then W3.
+Implement W2b (T-2.31), then W2c. Task list reconciled with SDD v2.1 on 2026-10-14.
