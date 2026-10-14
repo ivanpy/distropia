@@ -5,6 +5,11 @@ import {
   GUARD_PRICE_FILTERS_PRIORITY,
   guardPriceFilters
 } from './services/catalog/guardPriceFilters.js';
+import {
+  sanitizeWholesaleOnCreate,
+  sanitizeWholesaleOnUpdate,
+  WHOLESALE_CUSTOMER_GUARD_PRIORITY
+} from './services/customer/sanitizeWholesaleFields.js';
 import { assertRuntimeConfig } from './services/runtime/assertRuntimeConfig.js';
 
 /** Subset of the core `BootstrapContext` (`bin/lib/bootstrap/bootstrap.ts`). */
@@ -30,6 +35,11 @@ export default (context: BootstrapContext = {}) => {
   if (context.command !== 'build') {
     assertRuntimeConfig();
   }
+
+  // A9 / RF-20: no self-approval through registration or profile edition;
+  // B2B registrations repeat the RUC check (CU-00 step 3).
+  addProcessor('customerDataBeforeCreate', sanitizeWholesaleOnCreate, WHOLESALE_CUSTOMER_GUARD_PRIORITY);
+  addProcessor('customerDataBeforeUpdate', sanitizeWholesaleOnUpdate, WHOLESALE_CUSTOMER_GUARD_PRIORITY);
 
   // ADR-06 item 5: price range filters and price sorting are inert for
   // approved wholesale viewers (decided per request, see priceFilterScope).
