@@ -21,3 +21,31 @@ declare module '@evershop/evershop/lib/util/registry' {
     priority?: number
   ): void;
 }
+
+declare module '@evershop/evershop/types/request' {
+  /** Subset of `packages/evershop/src/types/request.ts` read by the extension. */
+  import type { Request } from 'express';
+
+  export interface CurrentCustomer {
+    customer_id: number;
+    [key: string]: unknown;
+  }
+
+  export interface EvershopRequest extends Request {
+    locals: {
+      customer: CurrentCustomer | null;
+      context: Record<string, unknown>;
+      [key: string]: unknown;
+    };
+  }
+}
+
+declare module '@evershop/evershop/types/response' {
+  /** `packages/evershop/src/types/response.ts` */
+  import type { Response } from 'express';
+
+  export interface EvershopResponse extends Response {
+    debugMiddlewares: { id: string; time: number }[];
+    $body: Record<string, unknown>;
+  }
+}
