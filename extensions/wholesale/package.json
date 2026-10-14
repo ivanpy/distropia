@@ -5,7 +5,7 @@
   "description": "Wholesale (B2B) extension for EverShop: tiered quantity rules and WhatsApp quotes",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && copyfiles -u 1 \"src/**/*.graphql\" dist",
+    "build": "tsc -p tsconfig.json && copyfiles -u 1 \"src/**/*.graphql\" \"src/api/**/*.json\" dist",
     "tsc": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

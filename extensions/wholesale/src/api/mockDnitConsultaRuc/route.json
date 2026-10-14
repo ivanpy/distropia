@@ -1,0 +1,5 @@
+{
+  "methods": ["GET"],
+  "path": "/v1/mock-dnit/consulta-ruc",
+  "access": "public"
+}
