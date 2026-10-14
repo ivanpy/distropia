@@ -190,14 +190,34 @@ export default async (connection: PoolClient): Promise<void> => {
     'WHOLESALE_QUOTE_FREIGHT_LABEL_CHECK',
     `CHECK ("freight_label" IN ('free', 'special'))`
   );
-  // NOT VALID: quotes created under 1.0.0 may carry grand_total without a
-  // breakdown; the rule applies to new and modified rows.
-  await addConstraint(
+  // A 1.0.0 quote with grand_total but no breakdown would violate the check
+  // on its next UPDATE (status change), so the migration refuses to run
+  // instead of adding a NOT VALID check: such rows must be fixed or deleted
+  // by hand first. Skipped once the check exists (every row satisfies it).
+  await execute(
     connection,
-    'wholesale_quote',
-    'WHOLESALE_QUOTE_TOTALS_CHECK',
-    `${TOTALS_CHECK} NOT VALID`
+    `DO $$
+     DECLARE
+       legacy integer;
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conname = 'WHOLESALE_QUOTE_TOTALS_CHECK'
+           AND conrelid = '"wholesale_quote"'::regclass
+       ) THEN
+         SELECT count(*) INTO legacy FROM "wholesale_quote"
+         WHERE NOT (
+           "d_tot_ope" = "d_sub_exe" + "d_sub_5" + "d_sub_10"
+           AND "grand_total" = "d_tot_ope"
+           AND "vat_total" = "d_iva_5" + "d_iva_10"
+         );
+         IF legacy > 0 THEN
+           RAISE EXCEPTION 'wholesale 1.1.0: % quote(s) carry totals without the SIFEN breakdown; fix or delete them before migrating', legacy;
+         END IF;
+       END IF;
+     END $$`
   );
+  await addConstraint(connection, 'wholesale_quote', 'WHOLESALE_QUOTE_TOTALS_CHECK', TOTALS_CHECK);
   // The single relaxation (ADR-14): accept `awaiting_freight` (16 chars, fits
   // varchar(16)). Skipped once the constraint already accepts it.
   await execute(

@@ -541,13 +541,28 @@ describeDb('wholesale migration Version-1.1.0', () => {
       ).toBe('WHOLESALE_QUOTE_FREIGHT_LABEL_CHECK');
     });
 
-    it('adds the totals check as NOT VALID and enforces it on new rows', async () => {
+    it('refuses to migrate while a quote carries totals without a breakdown', async () => {
+      await client.query('SAVEPOINT legacy_quote');
+      try {
+        await client.query(
+          `ALTER TABLE "wholesale_quote" DROP CONSTRAINT "WHOLESALE_QUOTE_TOTALS_CHECK"`
+        );
+        await insertQuote({ grand_total: 100 });
+        await expect(migrate110(client)).rejects.toThrow(
+          /1 quote\(s\) carry totals without the SIFEN breakdown/
+        );
+      } finally {
+        await client.query('ROLLBACK TO SAVEPOINT legacy_quote');
+      }
+    });
+
+    it('adds the totals check validated and enforces it on every row', async () => {
       const { rows } = await client.query(
         `SELECT "convalidated" FROM pg_constraint
          WHERE conname = 'WHOLESALE_QUOTE_TOTALS_CHECK'
            AND conrelid = '"wholesale_quote"'::regclass`
       );
-      expect(rows[0].convalidated).toBe(false);
+      expect(rows[0].convalidated).toBe(true);
       const bad = await expectFailure(
         `INSERT INTO "wholesale_quote"
          ("quote_number", "customer_id", "tax_id", "phone", "idempotency_key",
