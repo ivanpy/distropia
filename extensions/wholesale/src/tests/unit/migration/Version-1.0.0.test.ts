@@ -168,12 +168,16 @@ describeDb('wholesale migration Version-1.0.0', () => {
       `SELECT "tablename" FROM pg_tables
        WHERE schemaname = current_schema() AND tablename LIKE 'wholesale%'`
     );
-    expect(rows.map((r) => r.tablename).sort()).toEqual([
-      'wholesale_product_rule',
-      'wholesale_quote',
-      'wholesale_quote_item',
-      'wholesale_webhook_event'
-    ]);
+    // arrayContaining: once Version-1.1.0 is applied the database holds more
+    // wholesale tables (see Version-1.1.0.test.ts).
+    expect(rows.map((r) => r.tablename)).toEqual(
+      expect.arrayContaining([
+        'wholesale_product_rule',
+        'wholesale_quote',
+        'wholesale_quote_item',
+        'wholesale_webhook_event'
+      ])
+    );
   });
 
   it('creates every named constraint', async () => {
