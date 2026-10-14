@@ -30,6 +30,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 - **D-P2-3 (2026-10-12, user):** W2b = extension API middleware that masks amounts in core REST cart responses for approved wholesale customers (T-2.31).
 - **D-P2-4 (2026-10-13, user):** SDD replanned to v2.1 — Alt A (ADR-13), canonical states (ADR-14), NRE (ADR-15), payment void only (ADR-16); G-1 … G-11 confirmed. Phase 2 gains W2b and W2c; open minor points P-1 … P-11 live in `01_plan_de_fases.md` (P-5 still unconfirmed, not Phase 2).
+- **D-P2-5 (2026-10-14, user):** migration 1.1.0 refuses to run while any `wholesale_quote` row has totals without the SIFEN breakdown (rows must be fixed or deleted by hand); `WHOLESALE_QUOTE_TOTALS_CHECK` is added validated, not `NOT VALID`. Dev DB had 0 quotes when decided.
 - **D-P2-2 (2026-10-12, user):** keep the global `Price.text` override — masked amounts print `Subject to quote` from the API itself; real amounts format identically to core (parity-tested). W2 reuses `MASKED_AMOUNT` for cart prices.
 
 ## Tasks (work units)
@@ -38,8 +39,8 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W2** Cart masking + no price filters/sort for wholesale: T-2.10d, T-2.10e — route: delegated direct — commits `7dd425f0`, `f2b45738`, `4636a922`
 - [x] **W2b** REST cart masking: T-2.31 — route: delegated direct (writer + preparation trigger) — commit `8bbec4af` (+503) — review approved
 
-- [ ] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — ~1,000 lines (single additive migration file + test) — **next**
-- [ ] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — ~550 lines
+- [x] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — route: delegated direct (writer) + inline review correction — commits `5bf707c7`, `24ada00a`, `86f0378c`, `44147714` — review approved
+- [ ] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — ~550 lines — **next**
 - [ ] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 — ~300 lines
 - [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
@@ -100,9 +101,20 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - RED observed 4 failed / 11 passed → GREEN 15/15. Drift guards: every core `cartItemFields` key classified; set of core API routes using `.export()` equals covered set; core `sortMiddlewares` order handler < mask < `apiResponse` (core silently drops a middleware with a missing dependency).
 - Writer: build ok, `tsc` clean, suite 96/96, `packages/evershop/src` diff empty. Parent spot check: rebuild + suite 96/96.
 - Review: assess medium, `slice_budget_reached`; lineage `review-d038e7e5714bfa99`, consent granted, approved and acknowledged. Advisory (later work): `R3-shape-fail-open` (`maskCartRestResponse.ts:80-93`, warning — an unexpected body shape passes through unmasked); `R3-nested-amounts` (`:72-74`, suggestion); `R3-dist-coupling` (`cartRestMasking.test.ts:29-31`, suggestion).
-- Pending: live HTTP check on the dev server (approved customer `POST /api/cart/mine/items`).
+- Live HTTP check 2026-10-14 (dev server, session login via `POST /customer/login`; customer approved/revoked by a scratchpad DB script, all test rows deleted afterwards): approved customer → `POST /api/cart/mine/items`, `PATCH`/`DELETE /api/cart/mine/items/:id`, `POST /api/carts` all 200 with the 11 amount keys `null` and `is_masked: true`; same session after revoke and anonymous `POST /api/carts` → real prices (15 / 30), no `is_masked`. `POST /api/customer/tokens` returns 400 `JWT secret for customer is not configured` in this env (not used). Fail-closed 500 path not exercised over HTTP (`R3-http-fail-closed-unproved`, suggestion from review `review-b9879c624f2a361f`).
 - Follow-ups: masking of order/checkout REST responses (`cartCheckout`, `createOrder`) in a later phase; masking follows the viewer, not the cart owner (same as GraphQL); wiki entry on extension middleware for core API routes.
+
+### W2c (`5bf707c7`, `24ada00a`, `86f0378c`, `44147714`)
+
+- T-2.32/T-2.52 (`5bf707c7`): `services/runtime/getRuntimeMode.ts` + `assertRuntimeConfig.ts`, called from `bootstrap.ts` except `command === 'build'` (core `bin/build/index.js:47` passes it). Demo forbids the 6 real credentials of ADR-08; production requires 4 WhatsApp + 5 SIFEN vars and a real SIFEN provider (G-1) — so production boot fails by design until the SIFEN provider is wired (`realFiscalProviderAvailable`). `CLAUDE.md` §3 production rule amended for demo mode. RED: TS2307 / module not found → GREEN 49/49.
+- T-2.33 (`24ada00a`): v2.1 defaults from arch §2 + `isSpecialFreightAlways()`; `freeShippingMaxWeightKg = null` survives `getConfig` (node-config keeps null leaves). RED: TS2305/TS2339 → GREEN 16/16.
+- T-2.34 (`86f0378c`): `Version-1.1.0.ts` (920 lines) + integration test (885). Writer-chosen column types for tables the doc lists only in prose (§7.7–§7.9), extra CHECKs/indexes, status-check relaxation guarded, NRE FK moved after its table — see writer report in Engram. RED: module not found → GREEN 21/21; mutation check on the no-op snapshot.
+- Review `review-e2b461a827c14e51`: CRITICAL `R3-legacy-quote-totals-check` (NOT VALID check breaks UPDATEs of 1.0.0 quotes) → user decision D-P2-5 → correction `44147714` (inline, +45/-10; test written together with the fix, RED not observed separately). After the correction the lineage stopped at `captured_artifacts_unverifiable` (terminal); user chose a fresh review.
+- Review `review-7a42e4518059bc80` (W2c + correction, 2420 lines): approved and acknowledged. Advisory (later work): `R3-prod-boot-always-fails` (by design, G-1), `R3-build-skip-unproved` (verified unfounded: core passes `command: 'build'`), `R3-legacy-quote-hard-stop` (by design, D-P2-5), `R3-customer-delete-restrict` (credit FK RESTRICT blocks deleting approved wholesale customers — joins D-P2-1), `R3-test-lock-contention`, `R3-weakened-100-assertion` (1.0.0 table list now `arrayContaining`).
+- Checks: suite 183/183, `tsc` clean, build ok, `packages/evershop/src` diff empty; GGA pre-commit passed on all four commits.
+- Pending (user): add `WHOLESALE_DEMO_MODE`, `SIFEN_ENVIRONMENT`, `SIFEN_CERT_PATH`, `SIFEN_CERT_PASSWORD`, `SIFEN_CSC_ID`, `SIFEN_CSC` to `extensions/wholesale/.env.example` (agents are denied `.env*`).
+- Note: migration 1.1.0 applies on the next `npm run dev` (dev DB currently at 1.0.0 with 0 quotes).
 
 ## Next step
 
-Live HTTP check of W2b, then W2c (T-2.32, T-2.33, T-2.34, T-2.52). Task list reconciled with SDD v2.1 on 2026-10-14.
+W3 (registration + RUC: T-2.3, T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38).
