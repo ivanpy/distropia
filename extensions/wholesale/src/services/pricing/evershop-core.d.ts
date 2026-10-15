@@ -59,3 +59,14 @@ declare module '@evershop/evershop/types/response' {
     $body: Record<string, unknown>;
   }
 }
+
+declare module '@evershop/evershop/lib/event' {
+  /**
+   * `packages/evershop/src/lib/event/emitter.ts`: inserts the event row. With
+   * a caller-owned transaction connection the event commits or rolls back
+   * with the caller's work; subscribers only see committed events.
+   */
+  import type { Pool, PoolClient } from 'pg';
+
+  export function emit(name: string, data: Record<string, unknown>, conn?: PoolClient | Pool): Promise<void>;
+}

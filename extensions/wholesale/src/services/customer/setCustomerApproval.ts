@@ -1,3 +1,4 @@
+import { emit } from '@evershop/evershop/lib/event';
 import type { PoolClient } from 'pg';
 import { type AdminAuditActor, writeAudit } from '../audit/writeAudit.js';
 
@@ -9,6 +10,9 @@ import { type AdminAuditActor, writeAudit } from '../audit/writeAudit.js';
  * §4): it writes the approval columns with its own UPDATE, on the caller's
  * transaction connection, together with the credit row and the audit row.
  */
+
+/** Emitted once per effective approval (welcome e-mail subscriber, CU-00 step 6). */
+export const CUSTOMER_APPROVED_EVENT = 'wholesale_customer_approved';
 
 export type ApprovalErrorCode = 'CUSTOMER_NOT_FOUND' | 'CUSTOMER_NOT_WHOLESALE';
 
@@ -52,6 +56,10 @@ interface ApprovalState {
 interface CustomerApprovalRow {
   customer_id: number;
   uuid: string;
+  email: string;
+  full_name: string | null;
+  business_name: string | null;
+  tax_id: string | null;
   is_wholesale_approved: boolean;
   wholesale_approved_at: Date | null;
   wholesale_approved_by: number | null;
@@ -75,7 +83,7 @@ const notFound = () => new ApprovalError('CUSTOMER_NOT_FOUND', 404, 'Customer no
  *   set; RUC validated at registration). Sets the approval columns, creates
  *   `wholesale_customer_credit` with the table defaults (0 / 30 days) unless
  *   it already exists (a re-approval keeps the terms a manager set) and
- *   audits `customer.approve`.
+ *   audits `customer.approve`, then emits `wholesale_customer_approved`.
  * - Revoke: clears the approval columns (history stays in the audit log),
  *   keeps the credit row and audits `customer.revoke`.
  * - A request for the current state writes nothing (`changed: false`).
@@ -91,8 +99,8 @@ export async function setCustomerApproval(connection: PoolClient, input: Approva
   }
 
   const { rows } = await connection.query<CustomerApprovalRow>(
-    `SELECT "customer_id", "uuid", "is_wholesale_approved", "wholesale_approved_at",
-            "wholesale_approved_by", "wholesale_requested_at"
+    `SELECT "customer_id", "uuid", "email", "full_name", "business_name", "tax_id",
+            "is_wholesale_approved", "wholesale_approved_at", "wholesale_approved_by", "wholesale_requested_at"
        FROM "customer" WHERE "uuid" = $1 FOR UPDATE`,
     [input.customerUuid]
   );
@@ -144,6 +152,25 @@ export async function setCustomerApproval(connection: PoolClient, input: Approva
     before,
     after
   });
+
+  if (input.approved) {
+    // Same transaction: the event row is committed with the approval, so
+    // subscribers only ever see it after a successful COMMIT, and a rolled
+    // back approval leaves no event.
+    await emit(
+      CUSTOMER_APPROVED_EVENT,
+      {
+        customer_id: customer.customer_id,
+        uuid: customer.uuid,
+        email: customer.email,
+        full_name: customer.full_name,
+        business_name: customer.business_name,
+        tax_id: customer.tax_id,
+        wholesale_approved_at: after.wholesale_approved_at
+      },
+      connection
+    );
+  }
 
   return { uuid: customer.uuid, approved: input.approved, approvedAt: after.wholesale_approved_at, changed: true };
 }

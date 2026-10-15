@@ -278,6 +278,55 @@ describeDb('setCustomerApproval (T-2.6)', () => {
     expect(await auditRows(customer.uuid)).toEqual([]);
   });
 
+  describe('wholesale_customer_approved event (T-2.7)', () => {
+    async function approvedEvents(uuid: unknown): Promise<Row[]> {
+      const { rows } = await fixtures.client.query(
+        `SELECT "data" FROM "event" WHERE "name" = 'wholesale_customer_approved' AND "data"->>'uuid' = $1
+          ORDER BY "event_id"`,
+        [uuid]
+      );
+      return (rows as { data: Row }[]).map((r) => r.data);
+    }
+
+    it('an approval emits one event with the customer data', async () => {
+      const customer = await insertCustomer({ tax_id: '80012344-1' });
+      const result = await setCustomerApproval(fixtures.client, {
+        customerUuid: customer.uuid as string,
+        approved: true,
+        actor: ADMIN
+      });
+      expect(await approvedEvents(customer.uuid)).toEqual([
+        {
+          customer_id: customer.customer_id,
+          uuid: customer.uuid,
+          email: customer.email,
+          full_name: 'Buyer',
+          business_name: 'FERRETERIA CENTRAL S.A.',
+          tax_id: '80012344-1',
+          wholesale_approved_at: result.approvedAt
+        }
+      ]);
+    });
+
+    it('a no-op re-approval and a revocation emit nothing more', async () => {
+      const customer = await insertCustomer();
+      const input = { customerUuid: customer.uuid as string, actor: ADMIN };
+      await setCustomerApproval(fixtures.client, { ...input, approved: true });
+      await setCustomerApproval(fixtures.client, { ...input, approved: true });
+      await setCustomerApproval(fixtures.client, { ...input, approved: false });
+      expect(await approvedEvents(customer.uuid)).toHaveLength(1);
+    });
+
+    it('the event is written in the approval transaction: a rolled-back approval leaves no event', async () => {
+      const customer = await insertCustomer();
+      await fixtures.client.query('SAVEPOINT approval_rollback');
+      await setCustomerApproval(fixtures.client, { customerUuid: customer.uuid as string, approved: true, actor: ADMIN });
+      expect(await approvedEvents(customer.uuid)).toHaveLength(1);
+      await fixtures.client.query('ROLLBACK TO SAVEPOINT approval_rollback');
+      expect(await approvedEvents(customer.uuid)).toEqual([]);
+    });
+  });
+
   it('an unknown customer uuid is CUSTOMER_NOT_FOUND', async () => {
     expect(
       await codeOf(setCustomerApproval(fixtures.client, { customerUuid: randomUUID(), approved: true, actor: ADMIN }))
