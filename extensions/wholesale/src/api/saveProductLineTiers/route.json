@@ -1,0 +1,5 @@
+{
+  "methods": ["PUT"],
+  "path": "/wholesale/product-lines/:id/tiers",
+  "access": "private"
+}

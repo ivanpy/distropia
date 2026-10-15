@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "errorMessage": "name must be a non-blank text of at most 255 characters"
+    },
+    "countsTowardMix": { "type": "boolean", "errorMessage": "countsTowardMix must be a boolean" },
+    "isActive": { "type": "boolean", "errorMessage": "isActive must be a boolean" }
+  },
+  "required": ["name"],
+  "additionalProperties": false,
+  "errorMessage": {
+    "required": { "name": "name is required" },
+    "additionalProperties": "unknown field: only name, countsTowardMix and isActive are accepted"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "properties": {
+    "tiers": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "fromQty": { "type": "integer", "errorMessage": "fromQty must be a whole number" },
+          "discountPercent": { "type": "number", "errorMessage": "discountPercent must be a number" },
+          "label": { "type": ["string", "null"], "errorMessage": "label must be text or null" }
+        },
+        "required": ["fromQty", "discountPercent"],
+        "additionalProperties": false,
+        "errorMessage": {
+          "type": "every tier must be an object",
+          "required": {
+            "fromQty": "fromQty is required in every tier",
+            "discountPercent": "discountPercent is required in every tier"
+          },
+          "additionalProperties": "unknown field in a tier: only fromQty, discountPercent and label are accepted"
+        }
+      },
+      "errorMessage": {
+        "type": "tiers must be an array",
+        "maxItems": "tiers accepts at most 50 rows"
+      }
+    }
+  },
+  "required": ["tiers"],
+  "additionalProperties": false,
+  "errorMessage": {
+    "required": { "tiers": "tiers is required" },
+    "additionalProperties": "unknown field: only tiers is accepted"
+  }
+}

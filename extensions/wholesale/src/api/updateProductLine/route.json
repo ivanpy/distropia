@@ -1,0 +1,5 @@
+{
+  "methods": ["PATCH"],
+  "path": "/wholesale/product-lines/:id",
+  "access": "private"
+}
