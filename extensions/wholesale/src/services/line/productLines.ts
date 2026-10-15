@@ -302,3 +302,20 @@ export async function listProductLines(
   );
   return withTiers(db, rows);
 }
+
+/**
+ * Lines by internal id (any state), keyed by that id, tiers ordered. Internal
+ * use only (quote data loading): the ids never leave the extension.
+ */
+export async function loadProductLinesById(db: Queryable, ids: number[]): Promise<Map<number, ProductLine>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) {
+    return new Map();
+  }
+  const { rows } = await db.query<LineRow>(
+    `SELECT ${LINE_COLUMNS} FROM "wholesale_product_line" WHERE "wholesale_product_line_id" = ANY($1::int[])`,
+    [unique]
+  );
+  const lines = await withTiers(db, rows);
+  return new Map(rows.map((row, index) => [row.wholesale_product_line_id, lines[index]]));
+}
