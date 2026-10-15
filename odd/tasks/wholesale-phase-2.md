@@ -25,6 +25,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 ## Open decisions
 
 - **D-P2-1** `wholesale_quote` → `customer` FK is `ON DELETE RESTRICT` (deferred from Phase 1 review). Keep quote history vs allow customer deletion. Any change needs a new `Version-1.0.1.ts`.
+- **D-P2-7 (G-a)** core admin `PATCH /api/customers/:id` bypasses approval revocation, RUC check and audit, and can write the approval columns directly (see W4 evidence).
 
 ## Decisions
 
@@ -42,7 +43,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 - [x] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — route: delegated direct (writer) + inline review correction — commits `5bf707c7`, `24ada00a`, `86f0378c`, `44147714` — review approved
 - [x] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — route: delegated direct (2 writers) — commits `c044f0e4`, `1f03eb94`, `3f34c04a`, `c5c9f8df`, `d13a20ff` — reviews approved
-- [ ] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 — ~300 lines — **next**
+- [x] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 (+ tax_id revalidation on update, R3-update-taxid-unvalidated) — route: delegated direct (writer + preparation trigger: SDD design + migrations + W3 services) — commits `1cc2081e`, `d1b9b042`, `e767fc7a`, `eadb3a72` (+1330) — review approved
 - [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
@@ -129,6 +130,20 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Open gaps (no SDD codes): phone (E.164) and business name are not validated at registration — a B2B registration without phone is accepted; consider requiring `city`. Core `POST /api/customers` also writes `group_id`/`status` from the body (core behaviour).
 - Pending: live HTTP check of `ruc-check`, mock DNIT and B2B registration once migration 1.1.0 is applied (`npm run dev`).
 
+### W4 (`1cc2081e`, `d1b9b042`, `e767fc7a`, `eadb3a72`)
+
+- T-2.39 (`1cc2081e`): `services/audit/writeAudit.ts` — refuses a connection outside a transaction; admin email snapshot; a failing audit insert rolls the change back. RED TS2307 → GREEN 4/4.
+- T-2.6 (`d1b9b042`): `POST /api/wholesale/customers/:id/approval` (private route, `:id` = customer uuid, body `{approved}`); `services/customer/setCustomerApproval.ts`. Approve → credit row 0 / 30 days (`ON CONFLICT DO NOTHING`, keeps manager terms) + audit `customer.approve`; revoke → clears `wholesale_approved_at/_by`, keeps credit, audit `customer.revoke`; no-ops write nothing. Codes `CUSTOMER_NOT_FOUND` (404, also non-uuid id), `CUSTOMER_NOT_WHOLESALE` (422, no `wholesale_requested_at`). RED TS2307 → GREEN 11/11.
+- T-2.7 (`e767fc7a`): `wholesale_customer_approved` emitted through core `emit(name, data, connection)` on the approval transaction (commits/rolls back with it); not on revoke or no-op. RED 3 failed → GREEN 14/14.
+- T-2.8 (`eadb3a72`): `revokeOnContactChange.ts` as a before-hook of core `updateCustomerData` (not the `customerDataBeforeUpdate` processor the SDD sketches — the hook has the transaction connection). Normalized phone / RUC change on an approved customer → revoke + system audit; changed `tax_id` revalidated by `checkTaxpayer` (bad DV, blocked or emptied RUC refused); address edits untouched. RED end-to-end 1 failed → GREEN 64/64 (customer folder).
+- Checks: suite 364/364 (writer + parent spot check), `tsc` clean, build ok, `packages/evershop/src` diff empty; GGA passed on all four commits. DB tests apply 1.0.0 + 1.1.0 inside rolled-back transactions (no dev DB migration needed).
+- Review `review-74654bdbd82ebd21` (`4a9d0f41..eadb3a72`, 1328 lines, medium, reliability): consent granted, approved and acknowledged. Advisory (later work): `R3-handler-txn-path-untested` (`approveCustomer.ts:47-69`, warning), `R3-retail-taxid-revalidated` (`revokeOnContactChange.ts:74-76`, warning — retail customers' `tax_id` edits are also revalidated), `R3-core-test-mixed-migration-state` (suggestion).
+- Open gaps for the user:
+  - **G-a** core admin `PATCH /api/customers/:id` writes the body directly (no service, hooks or transaction): admin phone/`tax_id` edits skip revocation, RUC check and audit, and an admin can set `is_wholesale_approved` / `wholesale_approved_*` without credit row or audit. Needs a decision (W2b-style middleware that strips/blocks, or accept).
+  - G-b core `PATCH` profile `TaxpayerError` → 500 (same as `R3-core-error-mapping-unproved`).
+  - G-c no-op approve/revoke not audited; G-d revocation clears `wholesale_approved_at/_by` (history in audit log); event payload pending its Phase subscriber.
+- Not exercised: HTTP happy path of the approval endpoint (needs migration 1.1.0 on dev DB; audit rows are undeletable).
+
 ## Next step
 
-W4 (approval + audit: T-2.39, T-2.6, T-2.7, T-2.8).
+Decide G-a (core admin customer PATCH bypass), then W5 (product lines + per-product data).
