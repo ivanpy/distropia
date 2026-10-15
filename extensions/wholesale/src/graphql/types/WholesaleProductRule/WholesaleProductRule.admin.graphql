@@ -1,0 +1,36 @@
+"""
+Wholesale (B2B) data of a product (CU-01b). Admin-only type: it carries the
+base price. Tiers are read from productLine.tiers.
+"""
+type WholesaleProductRule {
+  uuid: String!
+  isEnabled: Boolean!
+  """
+  Enabled rule, base price and active line (RF-03).
+  """
+  isQuotable: Boolean!
+  productLine: WholesaleProductLine
+  """
+  Net of VAT, store currency. Null: not quotable.
+  """
+  basePrice: Float
+  """
+  10, 5 or exempt.
+  """
+  vatRate: String!
+  isCriticalConsumable: Boolean!
+  minQty: Int!
+  stepQty: Int!
+  """
+  Null: no cap.
+  """
+  maxQty: Int
+  updatedAt: String
+}
+
+extend type Product {
+  """
+  The product's wholesale rule; null when it has none.
+  """
+  wholesaleRule: WholesaleProductRule
+}
