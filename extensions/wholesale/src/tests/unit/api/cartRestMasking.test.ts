@@ -25,10 +25,8 @@ import {
   maskWholesaleCartResponse
 } from '../../../services/pricing/maskCartRestResponse.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
+import { CORE_MODULES, EXTENSION_API, sortedRouteMiddlewareIds } from './coreMiddleware.js';
 
-const CORE_MODULES = path.resolve(process.cwd(), 'packages/evershop/dist/modules');
-const CORE_MIDDLEWARE_LIB = path.resolve(process.cwd(), 'packages/evershop/dist/lib/middleware');
-const EXTENSION_API = path.resolve(process.cwd(), 'extensions/wholesale/dist/api');
 const MIDDLEWARE_ID = 'maskWholesaleCartAmounts';
 
 /** Cart item fields that carry an amount (core `item.export()` keys). */
@@ -119,32 +117,6 @@ function coreRoutesExportingItems(): string[] {
   return routes;
 }
 
-type Middleware = { id: string; routeId: string | null; scope: string };
-type CoreMiddlewareLib = {
-  scanForMiddlewareFunctions: (dir: string) => Middleware[];
-  sortMiddlewares: (middlewares: Middleware[]) => Middleware[];
-};
-
-async function loadCoreMiddlewareLib(): Promise<CoreMiddlewareLib> {
-  const scan = await import(pathToFileURL(path.join(CORE_MIDDLEWARE_LIB, 'scanForMiddlewareFunctions.js')).href);
-  const sort = await import(pathToFileURL(path.join(CORE_MIDDLEWARE_LIB, 'sort.js')).href);
-  return { ...scan, ...sort } as CoreMiddlewareLib;
-}
-
-/** The middleware ids core runs for an API route, in order (as `Handler.getMiddlewareByRoute`). */
-function sortedRouteMiddlewareIds(lib: CoreMiddlewareLib, routeId: string): string[] {
-  const all: Middleware[] = [];
-  for (const module of fs.readdirSync(CORE_MODULES)) {
-    for (const dir of [path.join(CORE_MODULES, module, 'api', 'global'), path.join(CORE_MODULES, module, 'api', routeId)]) {
-      if (fs.existsSync(dir)) all.push(...lib.scanForMiddlewareFunctions(dir));
-    }
-  }
-  all.push(...lib.scanForMiddlewareFunctions(path.join(EXTENSION_API, routeId)));
-  return lib
-    .sortMiddlewares(all.filter((m) => m.routeId === routeId || m.scope === 'app'))
-    .map((m) => m.id);
-}
-
 describe('REST cart masking drift guards (T-2.31)', () => {
   it('classifies every cart item field core registers (fails when core adds one)', async () => {
     const keys = await registeredCartItemKeys();
@@ -167,7 +139,7 @@ describe('REST cart masking drift guards (T-2.31)', () => {
       expect(
         fs.existsSync(path.join(EXTENSION_API, routeId, `[${handlerId}]${MIDDLEWARE_ID}.js`))
       ).toBe(true);
-      const ids = sortedRouteMiddlewareIds(await loadCoreMiddlewareLib(), routeId);
+      const ids = await sortedRouteMiddlewareIds(routeId);
       const handler = ids.indexOf(handlerId);
       const mask = ids.indexOf(MIDDLEWARE_ID);
       const send = ids.indexOf('apiResponse');
