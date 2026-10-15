@@ -1,0 +1,20 @@
+"""
+Quantity rules of a product for an approved wholesale customer (RF-09).
+Quantities only: the storefront never exposes wholesale prices or tiers.
+"""
+type WholesaleProductConstraint {
+  minQty: Int!
+  stepQty: Int!
+  """
+  Null: no cap.
+  """
+  maxQty: Int
+}
+
+extend type Product {
+  """
+  Quantity constraints for B2B customers. NULL for non-wholesale sessions
+  and for products that are not quotable.
+  """
+  wholesaleConstraint: WholesaleProductConstraint
+}
