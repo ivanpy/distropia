@@ -31,7 +31,17 @@ declare module '@evershop/evershop/types/request' {
     [key: string]: unknown;
   }
 
+  /** Admin user row set by the core admin auth middlewares (`types/request.ts`). */
+  export interface CurrentUser {
+    admin_user_id: number;
+    uuid: string;
+    email: string;
+    [key: string]: unknown;
+  }
+
   export interface EvershopRequest extends Request {
+    /** Logged-in admin user, `null` on storefront requests. */
+    getCurrentUser(): CurrentUser | null;
     locals: {
       customer: CurrentCustomer | null;
       context: Record<string, unknown>;
