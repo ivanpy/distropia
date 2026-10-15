@@ -33,18 +33,18 @@ type CoreBuilders = {
   buildResolvers: (isAdmin?: boolean) => Promise<IResolvers>;
 };
 
-/** Recursively list storefront resolver files (same filter as core). */
-function listResolverFiles(dir: string): string[] {
+/** Recursively list resolver files (same filter as core: admin ones only for the admin schema). */
+function listResolverFiles(dir: string, isAdmin = false): string[] {
   if (!fs.existsSync(dir)) {
     return [];
   }
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      return listResolverFiles(full);
+      return listResolverFiles(full, isAdmin);
     }
     return entry.name.endsWith('.resolvers.js') &&
-      !entry.name.endsWith('.admin.resolvers.js')
+      (isAdmin || !entry.name.endsWith('.admin.resolvers.js'))
       ? [full]
       : [];
   });
@@ -56,13 +56,13 @@ function listResolverFiles(dir: string): string[] {
  * in parallel). Importing them sequentially first fills the module registry,
  * so the parallel pass only hits the cache. Test-harness only.
  */
-async function prewarmResolverModules(): Promise<void> {
+async function prewarmResolverModules(isAdmin = false): Promise<void> {
   const modulesDir = path.resolve(CORE_GRAPHQL_SERVICES, '..', '..');
   const files = [
     ...fs
       .readdirSync(modulesDir)
-      .flatMap((m) => listResolverFiles(path.join(modulesDir, m, 'graphql', 'types'))),
-    ...listResolverFiles(path.resolve(process.cwd(), 'extensions/wholesale/dist/graphql/types'))
+      .flatMap((m) => listResolverFiles(path.join(modulesDir, m, 'graphql', 'types'), isAdmin)),
+    ...listResolverFiles(path.resolve(process.cwd(), 'extensions/wholesale/dist/graphql/types'), isAdmin)
   ];
   for (const file of files) {
     await import(pathToFileURL(file).href);
@@ -70,8 +70,8 @@ async function prewarmResolverModules(): Promise<void> {
 }
 
 /** Load the untyped compiled core schema builders (not part of the public exports). */
-async function loadCoreBuilders(): Promise<CoreBuilders> {
-  await prewarmResolverModules();
+async function loadCoreBuilders(isAdmin = false): Promise<CoreBuilders> {
+  await prewarmResolverModules(isAdmin);
   const types = (await import(
     path.join(CORE_GRAPHQL_SERVICES, 'buildTypes.js')
   )) as Pick<CoreBuilders, 'buildTypeDefs'>;
@@ -98,6 +98,18 @@ export async function buildStorefrontSchema(
   return makeExecutableSchema({
     typeDefs: buildTypeDefs(false) as string,
     resolvers: resolvers as IResolvers
+  });
+}
+
+/**
+ * The merged admin schema (core + extension, `.admin.graphql` and
+ * `.admin.resolvers.js` included), as core builds it for `/api/admin/graphql`.
+ */
+export async function buildAdminSchema(): Promise<GraphQLSchema> {
+  const { buildTypeDefs, buildResolvers } = await loadCoreBuilders(true);
+  return makeExecutableSchema({
+    typeDefs: buildTypeDefs(true) as string,
+    resolvers: (await buildResolvers(true)) as IResolvers
   });
 }
 

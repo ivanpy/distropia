@@ -1,0 +1,34 @@
+"""
+A wholesale product line (ADR-10): groups products that share one tier
+table. Admin-only type: the storefront never exposes line tiers.
+"""
+type WholesaleProductLine {
+  uuid: String!
+  name: String!
+  isActive: Boolean!
+  """
+  Whether items of this line count toward the mix rule (RF-27).
+  """
+  countsTowardMix: Boolean!
+  """
+  Quantity tiers ordered by fromQty ascending.
+  """
+  tiers: [WholesaleTier!]!
+}
+
+"""
+A quantity tier of a product line: from fromQty units on, discountPercent
+off the base price.
+"""
+type WholesaleTier {
+  fromQty: Int!
+  discountPercent: Float!
+  label: String
+}
+
+extend type Query {
+  """
+  Product lines ordered by name; inactive ones only when includeInactive is true.
+  """
+  wholesaleProductLines(includeInactive: Boolean): [WholesaleProductLine!]!
+}
