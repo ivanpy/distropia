@@ -9,7 +9,8 @@
  * itself (`{ error: { status, code, message, details? } }`), so the framework
  * must not auto-call `next()` (ERR_HTTP_HEADERS_SENT); on success it sets
  * `$body = { data: line }` and calls `next()` for the core `apiResponse`.
- * Unexpected errors roll back and go to the core error handler.
+ * Unexpected errors roll back and go to the core error handler; `next()`
+ * runs only after the transaction is settled (R3-handler-next-inside-try).
  *
  * `acquire` is injectable so tests can run the transaction path on a
  * rolled-back fixture transaction; routes use the core pool.
@@ -61,14 +62,12 @@ export const createProductLineHandler =
     }
 
     let connection;
+    let line: ProductLine;
     try {
       connection = await acquire();
       await startTransaction(connection);
-      const line = await operation.run(connection, request);
+      line = await operation.run(connection, request);
       await commit(connection);
-      response.status(operation.successStatus);
-      response.$body = { data: line };
-      next();
     } catch (e) {
       if (connection) {
         await rollback(connection).catch(() => undefined);
@@ -78,5 +77,11 @@ export const createProductLineHandler =
         return;
       }
       next(e);
+      return;
     }
+    // Outside the try: the transaction is settled, so a downstream throw can
+    // neither roll back the released connection nor reach `next` twice.
+    response.status(operation.successStatus);
+    response.$body = { data: line };
+    next();
   };

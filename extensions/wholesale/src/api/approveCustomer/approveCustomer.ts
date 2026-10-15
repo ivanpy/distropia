@@ -55,18 +55,16 @@ export const createApproveCustomerHandler =
     }
 
     let connection;
+    let result: Awaited<ReturnType<typeof setCustomerApproval>>;
     try {
       connection = await acquire();
       await startTransaction(connection);
-      const result = await setCustomerApproval(connection, {
+      result = await setCustomerApproval(connection, {
         customerUuid,
         approved: request.body.approved === true,
         actor: { type: 'admin', adminUserId: admin.admin_user_id, email: admin.email }
       });
       await commit(connection);
-      response.status(OK);
-      response.$body = { data: result };
-      next();
     } catch (e) {
       if (connection) {
         await rollback(connection).catch(() => undefined);
@@ -76,7 +74,14 @@ export const createApproveCustomerHandler =
         return;
       }
       next(e);
+      return;
     }
+    // Outside the try: the transaction is settled, so a downstream throw can
+    // neither roll back the released connection nor reach `next` twice
+    // (R3-handler-next-inside-try).
+    response.status(OK);
+    response.$body = { data: result };
+    next();
   };
 
 export default createApproveCustomerHandler();

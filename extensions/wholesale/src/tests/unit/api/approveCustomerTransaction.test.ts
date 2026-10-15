@@ -71,7 +71,12 @@ interface Outcome {
   next: unknown[];
 }
 
-async function callHandler(connection: SavepointConnection, uuid: string, approved: boolean): Promise<Outcome> {
+async function callHandler(
+  connection: SavepointConnection,
+  uuid: string,
+  approved: boolean,
+  downstream?: () => void
+): Promise<Outcome> {
   const outcome: Outcome = { next: [] };
   const response = {
     status(code: number) {
@@ -90,6 +95,7 @@ async function callHandler(connection: SavepointConnection, uuid: string, approv
     response as unknown as EvershopResponse,
     (err?: unknown) => {
       outcome.next.push(err);
+      downstream?.();
     }
   );
   outcome.body = response.$body;
@@ -179,5 +185,23 @@ describeDb('approval handler transaction path (R3-handler-txn-path-untested)', (
     expect(outcome.json).toMatchObject({ error: { status: 422, code: 'CUSTOMER_NOT_WHOLESALE' } });
     expect(outcome.next).toEqual([]);
     expect(await writes(customer)).toEqual({ approved: false, credit: 0, audit: 0, events: 0 });
+  });
+
+  it('hands over after COMMIT: a downstream throw neither rolls back nor calls next twice (R3-handler-next-inside-try)', async () => {
+    const customer = await insertCustomer();
+    const connection = savepointConnection(fixtures.client);
+    const downstream = new Error('downstream failure');
+    let nextCalls = 0;
+    await expect(
+      callHandler(connection, customer.uuid as string, true, () => {
+        nextCalls += 1;
+        throw downstream;
+      })
+    ).rejects.toBe(downstream);
+
+    expect(nextCalls).toBe(1);
+    expect(connection.statements).toEqual(['BEGIN', 'COMMIT']);
+    expect(connection.released).toBe(1);
+    expect(await writes(customer)).toEqual({ approved: true, credit: 1, audit: 1, events: 1 });
   });
 });
