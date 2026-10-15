@@ -23,6 +23,21 @@ declare module '@evershop/evershop/customer/services' {
   ): void;
 
   /**
+   * Runs before `updateCustomerData(uuid, data, connection)` inside the core
+   * `updateCustomer` transaction, after the `customerDataBeforeUpdate`
+   * processors; mutations of `data` are written by core.
+   */
+  export function hookBeforeUpdateCustomerData(
+    callback: (
+      this: Record<string, unknown>,
+      uuid: string,
+      data: Record<string, unknown>,
+      connection: PoolClient
+    ) => void | Promise<void>,
+    priority?: number
+  ): void;
+
+  /**
    * Runs after `insertCustomerData` inside the registration transaction. Core
    * calls it with the inserted row first (`lib/util/hookable.ts`), although
    * the core helper type omits it.
