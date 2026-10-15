@@ -25,7 +25,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 ## Open decisions
 
 - **D-P2-1** `wholesale_quote` → `customer` FK is `ON DELETE RESTRICT` (deferred from Phase 1 review). Keep quote history vs allow customer deletion. Any change needs a new `Version-1.0.1.ts`.
-- **D-P2-7 (G-a)** core admin `PATCH /api/customers/:id` bypasses approval revocation, RUC check and audit, and can write the approval columns directly (see W4 evidence).
+- **D-P2-7 (G-a)** — decided 2026-10-15 by the user: close it (W4b), approval only through the audited endpoint. Core admin `PATCH /api/customers/:id` bypasses approval revocation, RUC check and audit, and can write the approval columns directly (see W4 evidence).
 
 ## Decisions
 
@@ -44,6 +44,8 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — route: delegated direct (writer) + inline review correction — commits `5bf707c7`, `24ada00a`, `86f0378c`, `44147714` — review approved
 - [x] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — route: delegated direct (2 writers) — commits `c044f0e4`, `1f03eb94`, `3f34c04a`, `c5c9f8df`, `d13a20ff` — reviews approved
 - [x] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 (+ tax_id revalidation on update, R3-update-taxid-unvalidated) — route: delegated direct (writer + preparation trigger: SDD design + migrations + W3 services) — commits `1cc2081e`, `d1b9b042`, `e767fc7a`, `eadb3a72` (+1330) — review approved
+- [ ] **W4b** Close customer-write bypasses (D-P2-7, user 2026-10-15: "security is crucial, fix before proceeding"): (a) middleware on core admin `PATCH /api/customers/:id` strips approval columns and refuses (422) phone/`tax_id` changes on an approved wholesale customer; (b) sweep every other core route/service that writes `customer` for the same bypass; (c) storefront registration must not set `group_id`/`status` from the body; (d) test the approval handler's transaction path (R3-handler-txn-path-untested) — route: delegated direct (writer + mapping) — commits `ee668e30`, `71089952`, `350d4a59`, `b9a79941` (+978/-66) — review approved
+- [ ] **W4c** Close the admin-PATCH read/write race (`R3-guard-read-write-race`): core admin PATCH is not transactional — **awaiting user decision**
 - [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
@@ -144,6 +146,16 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
   - G-c no-op approve/revoke not audited; G-d revocation clears `wholesale_approved_at/_by` (history in audit log); event payload pending its Phase subscriber.
 - Not exercised: HTTP happy path of the approval endpoint (needs migration 1.1.0 on dev DB; audit rows are undeletable).
 
+### W4b (`ee668e30`, `71089952`, `350d4a59`, `b9a79941`)
+
+- (a) `ee668e30`: `api/updateCustomer/[escapeHtml]guardWholesaleCustomerUpdate[updateCustomer].ts` + `services/customer/guardAdminCustomerUpdate.ts` — strips `PROTECTED_CUSTOMER_FIELDS` (single source in `sanitizeWholesaleFields.ts`); approved customer + normalized phone/RUC change → 422 `WHOLESALE_REVOKE_REQUIRED`, nothing written; other customers: phone normalized, changed RUC validated by `checkTaxpayer` (422 taxpayer code). Fails closed without a DB pool. Ordering drift guard via shared `tests/unit/api/coreMiddleware.ts`. RED 14 failed → GREEN 68/68 (api folder).
+- (c) `71089952`: core `POST /api/customers` is public — `api/createCustomer/[bodyParser,getCurrentUser]stripRegistrationPrivileges[createCustomer].ts` drops `group_id`/`status` unless an admin is logged in (`status: 0` would also have skipped `customer_registered`). RED 4 failed → GREEN 5/5.
+- (b) `350d4a59`: inventory drift guard `tests/unit/api/customerWriteInventory.test.ts` — core `customer` writers: admin `updateCustomer` route (guarded, a), `createCustomer` service (processor + c), `updateCustomer` service (processor + hook), `updatePassword` (password only), `customerMetafield` / `pruneCustomer` (`meta_data` only), `deleteCustomer` (FK RESTRICT on credit). No GraphQL mutations. Mutation-checked (removing a route entry fails 1/17).
+- (d) `b9a79941`: `createApproveCustomerHandler(acquire)` injectable; test maps BEGIN/COMMIT/ROLLBACK to savepoints — success commits approval+credit+audit+event; injected audit/event failures roll back to zero rows; connection released exactly once. GREEN 18/18.
+- Checks: suite 405/405 (writer + parent spot check), `tsc` clean, build ok, `packages/evershop/src` diff empty; GGA passed.
+- Review `review-875d69332740a9d2` (`750a642c..b9a79941`, 1044 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-guard-read-write-race` (warning → W4c), `R3-business-name-overwrite-untested`, `R3-inventory-route-module-assumption` (suggestions).
+- Remaining gaps: admin PATCH DB errors (E.164, duplicate wholesale RUC) still → 500 (G-b family).
+
 ## Next step
 
-Decide G-a (core admin customer PATCH bypass), then W5 (product lines + per-product data).
+User decision on W4c (admin PATCH race), then W5 (product lines + per-product data).
