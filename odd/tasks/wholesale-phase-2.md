@@ -46,7 +46,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 (+ tax_id revalidation on update, R3-update-taxid-unvalidated) — route: delegated direct (writer + preparation trigger: SDD design + migrations + W3 services) — commits `1cc2081e`, `d1b9b042`, `e767fc7a`, `eadb3a72` (+1330) — review approved
 - [ ] **W4b** Close customer-write bypasses (D-P2-7, user 2026-10-15: "security is crucial, fix before proceeding"): (a) middleware on core admin `PATCH /api/customers/:id` strips approval columns and refuses (422) phone/`tax_id` changes on an approved wholesale customer; (b) sweep every other core route/service that writes `customer` for the same bypass; (c) storefront registration must not set `group_id`/`status` from the body; (d) test the approval handler's transaction path (R3-handler-txn-path-untested) — route: delegated direct (writer + mapping) — commits `ee668e30`, `71089952`, `350d4a59`, `b9a79941` (+978/-66) — review approved
 - [ ] **W4c** Close the admin-PATCH read/write race (`R3-guard-read-write-race`): core admin PATCH is not transactional — decided 2026-10-15 by the user: DB trigger on `customer` (new migration) rejecting phone/`tax_id` changes on an approved customer unless the same statement revokes, and approval-column changes unless flagged by the audited approval path (transaction-local setting) — route: delegated direct (writer) — commit `41329a82` (+737/-50) — review approved
-- [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
+- [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines — route: delegated direct, two sequential writers (W5a lines: T-2.40 … T-2.43; W5b per-product rule: T-2.44, T-2.11 … T-2.17), review per slice — W5a done (`cb84abdb`, `95a99e8c`, `2f3b2d6a`, `55bfd622`, `41adcdfe`; review approved) — **W5b in progress**
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
 - [ ] **W8** `POST /api/wholesale/request-quote` + trust proxy: T-2.29, T-2.30 — ~250 lines
@@ -165,6 +165,17 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Review `review-5cd9737c8d3a7f6b` (`c477ae36..41329a82`, 787 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-admin-patch-under-trigger-unproved` (warning — admin PATCH guard tests don't apply 1.1.1), `R3-arm-window-before-core-write` (suggestion).
 - Operator notes: manual SQL approvals need `SELECT set_config('wholesale.approval_write','on',true)` in the same transaction and are not audited — use the endpoint. In the race, core admin PATCH answers 500 with `WHOLESALE_REVOKE_REQUIRED: …` (core catches errors; no 422 without touching core). DB test suites must lock `customer` first (apply 1.0.0 first) to avoid deadlocks. Migration 1.1.1 applies on the next `npm run dev`.
 
+### W5a (`cb84abdb`, `95a99e8c`, `2f3b2d6a`, `55bfd622`, `41adcdfe`)
+
+- T-2.40 `services/line/validateLineTiers.ts`: RED TS2307 → GREEN 32/32 (order, duplicates, 0–100 with 2 decimals, non-decreasing, label ≤ 64 code points; must be pre-sorted, not sorted; empty table allowed per RF-12; max 50 tiers).
+- T-2.41 `services/line/productLines.ts`: create / rename / activate / replace tiers (`FOR UPDATE` + DELETE + `INSERT … unnest`); duplicate name (case/space-insensitive, also the unique-index race) → 409 `PRODUCT_LINE_NAME_TAKEN`; invalid tiers → 422 `INVALID_TIERS` with per-row errors. GREEN 18/18.
+- T-2.42 routes `createProductLine`, `updateProductLine`, `saveProductLineTiers` + `services/line/productLineHandler.ts`; payload schemas use `ajv-errors` so the core 400 names the field; 404 `PRODUCT_LINE_NOT_FOUND`. GREEN 16/16. Not audited (not marked (A) in SDD §7).
+- T-2.43 admin GraphQL `WholesaleProductLine` / `wholesaleProductLines(includeInactive)`: RED 3 → GREEN 4/4; tiers ordered; absent from storefront schema.
+- `41adcdfe`: 30 s per-test timeouts on core-pool registration tests (R3-test-lock-contention flake; baseline failed 1/3 runs). Schemas built before fixture transactions.
+- Checks: suite 494/494 (writer 3 runs + parent spot check), `tsc` clean, build ok, `packages/evershop/src` diff empty; GGA passed. No migration needed (1.1.0 matches SDD §7.1).
+- Review `review-56245aa953612127` (`f4ca3ca9..41adcdfe`, 1858 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-handler-next-inside-try` (`productLineHandler.ts:64-81`, warning — `next()` runs inside the try after COMMIT, so a downstream throw would trigger a rollback and a second `next(e)`) → fold into W5b for both handler factories.
+- Gaps: HTTP not exercised live; core HTML escaping can push a label past 64 → 422 `LABEL_TOO_LONG`.
+
 ## Next step
 
-W5 (product lines + per-product data). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 + 1.1.1.
+W5b (per-product rule: T-2.44, T-2.11 … T-2.17). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 + 1.1.1.
