@@ -31,6 +31,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - **D-P2-3 (2026-10-12, user):** W2b = extension API middleware that masks amounts in core REST cart responses for approved wholesale customers (T-2.31).
 - **D-P2-4 (2026-10-13, user):** SDD replanned to v2.1 — Alt A (ADR-13), canonical states (ADR-14), NRE (ADR-15), payment void only (ADR-16); G-1 … G-11 confirmed. Phase 2 gains W2b and W2c; open minor points P-1 … P-11 live in `01_plan_de_fases.md` (P-5 still unconfirmed, not Phase 2).
 - **D-P2-5 (2026-10-14, user):** migration 1.1.0 refuses to run while any `wholesale_quote` row has totals without the SIFEN breakdown (rows must be fixed or deleted by hand); `WHOLESALE_QUOTE_TOTALS_CHECK` is added validated, not `NOT VALID`. Dev DB had 0 quotes when decided.
+- **D-P2-6 (2026-10-14, user):** T-2.4c — a B2B registration through native `POST /api/customers` carries an `address` object; it is validated with core `validateAddress` and inserted as the default `customer_address` in the same transaction (`hookBefore`/`hookAfter` `insertCustomerData`). Codes `WHOLESALE_ADDRESS_REQUIRED` / `WHOLESALE_ADDRESS_INVALID`.
 - **D-P2-2 (2026-10-12, user):** keep the global `Price.text` override — masked amounts print `Subject to quote` from the API itself; real amounts format identically to core (parity-tested). W2 reuses `MASKED_AMOUNT` for cart prices.
 
 ## Tasks (work units)
@@ -40,8 +41,8 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W2b** REST cart masking: T-2.31 — route: delegated direct (writer + preparation trigger) — commit `8bbec4af` (+503) — review approved
 
 - [x] **W2c** Runtime modes + config + migration 1.1.0: T-2.32, T-2.33, T-2.34, T-2.52 — route: delegated direct (writer) + inline review correction — commits `5bf707c7`, `24ada00a`, `86f0378c`, `44147714` — review approved
-- [ ] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — ~550 lines — **next**
-- [ ] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 — ~300 lines
+- [x] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — route: delegated direct (2 writers) — commits `c044f0e4`, `1f03eb94`, `3f34c04a`, `c5c9f8df`, `d13a20ff` — reviews approved
+- [ ] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 — ~300 lines — **next**
 - [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
@@ -115,6 +116,19 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Pending (user): add `WHOLESALE_DEMO_MODE`, `SIFEN_ENVIRONMENT`, `SIFEN_CERT_PATH`, `SIFEN_CERT_PASSWORD`, `SIFEN_CSC_ID`, `SIFEN_CSC` to `extensions/wholesale/.env.example` (agents are denied `.env*`).
 - Note: migration 1.1.0 applies on the next `npm run dev` (dev DB currently at 1.0.0 with 0 quotes).
 
+### W3 (`c044f0e4`, `1f03eb94`, `3f34c04a`, `c5c9f8df`, `d13a20ff`)
+
+- T-2.35/T-2.36 (`c044f0e4`): `services/taxpayer/*` — `rucCheckDigit` + `normalizeRuc` (mod 11), `dnitMockProvider` (seed + even/odd), `localOnlyTaxpayerProvider`, `checkTaxpayer` by runtime mode. RED TS2307 → GREEN 71/71; the 3 CIRCUITO bad DVs fail in every mode.
+- T-2.37/T-2.38 (`1f03eb94`): `GET /api/wholesale/ruc-check` (200/422) and `GET /api/v1/mock-dnit/consulta-ruc` (CIRCUITO §2 shape, 404 in production). Build now copies `src/api/**/*.json`. Writer choices not in the docs: 422 body `{status, code, message}`; `tipo_contribuyente` JURIDICA for 8-digit bases starting `80`. RED TS2307 → GREEN 39/39.
+- T-2.3/T-2.4 (`3f34c04a`): RED runtime 2/2 (approval fields accepted on registration and profile update) → GREEN; `sanitizeWholesaleFields` processors (priority 900) strip approval fields; B2B create runs `checkTaxpayer`, stores RUC with DV, mock business name in dev/demo, `is_wholesale_approved = false`, `wholesale_requested_at` set.
+- T-2.4b (`c5c9f8df`): subscriber `customer_registered/notifyPendingApproval` → admin notification only when `wholesale_requested_at`. GREEN 3/3.
+- T-2.4c (`d13a20ff`, D-P2-6): `registrationAddress.ts`; end-to-end test through the compiled core `createCustomer` with a throwing probe hook to roll back. RED 3 failed → GREEN; `is_default` is BOOLEAN since core customer migration 1.0.3 (= RF-19 `is_default = 1`). Required fields follow core `validateAddress` (`full_name, address_1, province, country, postcode`; `city`/`telephone` optional).
+- Checks: suite 334/334 (writers + parent spot checks), `tsc` clean, `packages/evershop/src` diff empty; GGA passed on every commit.
+- Reviews: `review-71af6236f7c724ea` (`c044f0e4..c5c9f8df`, 1351 lines) and `review-e2444e68ce20f0a9` (`d13a20ff`) approved and acknowledged. A full-branch review attempt failed `stale_target_identity` (HEAD moved during consent) — full-branch reviews also exceed the lens budget; review per slice.
+- Advisory (later work): `R3-update-taxid-unvalidated` (profile edit can change `tax_id`/`phone` unvalidated and without revocation — W4 T-2.8); `R3-core-error-mapping-unproved` + `R3-address-error-500` (core returns registration errors as 500; map to 422 later); `R3-notify-undefined-body`; `R3-address-fixture-validity`; `R3-numeric-postcode`; `R3-b2c-address-rollback-unasserted`.
+- Open gaps (no SDD codes): phone (E.164) and business name are not validated at registration — a B2B registration without phone is accepted; consider requiring `city`. Core `POST /api/customers` also writes `group_id`/`status` from the body (core behaviour).
+- Pending: live HTTP check of `ruc-check`, mock DNIT and B2B registration once migration 1.1.0 is applied (`npm run dev`).
+
 ## Next step
 
-W3 (registration + RUC: T-2.3, T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38).
+W4 (approval + audit: T-2.39, T-2.6, T-2.7, T-2.8).
