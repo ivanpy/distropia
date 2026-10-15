@@ -4,9 +4,14 @@ import {
   hookBeforeInsertCustomerData,
   hookBeforeUpdateCustomerData
 } from '@evershop/evershop/customer/services';
+import { hookAfter } from '@evershop/evershop/lib/util/hookable';
 import { addProcessor } from '@evershop/evershop/lib/util/registry';
 import config from 'config';
 import { WHOLESALE_CONFIG_DEFAULTS } from './config/defaults.js';
+import {
+  createWholesaleCartItemFields,
+  rejectInvalidWholesaleQuantity
+} from './services/cart/wholesaleCartItemFields.js';
 import {
   GUARD_PRICE_FILTERS_PRIORITY,
   guardPriceFilters
@@ -71,4 +76,10 @@ export default (context: BootstrapContext = {}) => {
   // ADR-06 item 5: price range filters and price sorting are inert for
   // approved wholesale viewers (decided per request, see priceFilterScope).
   addProcessor('productCollectionFilters', guardPriceFilters, GUARD_PRICE_FILTERS_PRIORITY);
+
+  // RF-03 / RF-10 (T-2.15): carts of approved wholesale customers accept
+  // only quotable products in quantities on the rule's grid; a quantity
+  // update off the grid is refused, never rounded.
+  addProcessor('cartItemFields', createWholesaleCartItemFields());
+  hookAfter('updateCartItemQty', rejectInvalidWholesaleQuantity);
 };
