@@ -18,6 +18,7 @@ import { graphql } from 'graphql';
 import type { GraphQLSchema } from 'graphql';
 import pg from 'pg';
 import migrate from '../../../migration/Version-1.0.0.js';
+import { withApprovalWrite } from '../../../services/customer/approvalWriteFlag.js';
 
 /** `describe` when a database is configured, `describe.skip` otherwise. */
 export const describeDb = process.env.DB_NAME ? describe : describe.skip;
@@ -128,10 +129,13 @@ export async function openFixtures(): Promise<Fixtures> {
   return {
     client,
     async insertCustomer(approved: boolean) {
-      const { rows } = await client.query(
-        `INSERT INTO "customer" ("email", "password", "full_name", "is_wholesale_approved")
-         VALUES ($1, 'x', 'Wholesale Masking Test', $2) RETURNING *`,
-        [`wholesale-test-${randomUUID()}@example.com`, approved]
+      // Migration 1.1.1 (approval trigger): an approved row needs the approval write flag.
+      const { rows } = await withApprovalWrite(client, () =>
+        client.query(
+          `INSERT INTO "customer" ("email", "password", "full_name", "is_wholesale_approved")
+           VALUES ($1, 'x', 'Wholesale Masking Test', $2) RETURNING *`,
+          [`wholesale-test-${randomUUID()}@example.com`, approved]
+        )
       );
       const customer = rows[0] as Record<string, unknown>;
       delete customer.password;

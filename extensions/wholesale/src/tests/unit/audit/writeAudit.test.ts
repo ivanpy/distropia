@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import type { PoolClient } from 'pg';
 import migrate110 from '../../../migration/Version-1.1.0.js';
 import { writeAudit } from '../../../services/audit/writeAudit.js';
+import { withApprovalWrite } from '../../../services/customer/approvalWriteFlag.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
 
 const ADMIN = { type: 'admin', adminUserId: 7, email: 'manager@example.com' } as const;
@@ -106,9 +107,9 @@ describeDb('writeAudit (T-2.39)', () => {
     await fixtures.client.query('SAVEPOINT audit_failure');
 
     // The audited change and its audit row share the transaction.
-    await fixtures.client.query('UPDATE "customer" SET "is_wholesale_approved" = true WHERE "uuid" = $1', [
-      customer.uuid
-    ]);
+    await withApprovalWrite(fixtures.client, () =>
+      fixtures.client.query('UPDATE "customer" SET "is_wholesale_approved" = true WHERE "uuid" = $1', [customer.uuid])
+    );
     await expect(
       writeAudit(fixtures.client, {
         actor: ADMIN,

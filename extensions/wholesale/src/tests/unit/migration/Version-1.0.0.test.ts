@@ -12,6 +12,7 @@ import 'dotenv/config';
 import { randomUUID } from 'crypto';
 import pg from 'pg';
 import migrate from '../../../migration/Version-1.0.0.js';
+import { withApprovalWrite } from '../../../services/customer/approvalWriteFlag.js';
 
 const describeDb = process.env.DB_NAME ? describe : describe.skip;
 
@@ -261,10 +262,13 @@ describeDb('wholesale migration Version-1.0.0', () => {
   });
 
   it('allows one wholesale account per tax id', async () => {
-    await client.query(
-      `UPDATE "customer" SET "tax_id" = 'TEST-TAX-1', "wholesale_requested_at" = now()
-       WHERE "customer_id" = $1`,
-      [customerId]
+    // Migration 1.1.1 protects wholesale_requested_at on UPDATE (approval write flag).
+    await withApprovalWrite(client, () =>
+      client.query(
+        `UPDATE "customer" SET "tax_id" = 'TEST-TAX-1', "wholesale_requested_at" = now()
+         WHERE "customer_id" = $1`,
+        [customerId]
+      )
     );
     const error = await expectFailure(
       `INSERT INTO "customer" ("email", "password", "tax_id", "wholesale_requested_at")

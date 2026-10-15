@@ -1,6 +1,7 @@
 import { emit } from '@evershop/evershop/lib/event';
 import type { PoolClient } from 'pg';
 import { type AdminAuditActor, writeAudit } from '../audit/writeAudit.js';
+import { withApprovalWrite } from './approvalWriteFlag.js';
 
 /**
  * Admin approval and revocation of a wholesale customer (CU-00 steps 5-6,
@@ -9,6 +10,8 @@ import { type AdminAuditActor, writeAudit } from '../audit/writeAudit.js';
  * Does not go through core `updateCustomer` (`01_arquitectura_evershop.md`
  * §4): it writes the approval columns with its own UPDATE, on the caller's
  * transaction connection, together with the credit row and the audit row.
+ * The UPDATE runs with the approval write flag armed (migration 1.1.1
+ * trigger) and disarmed right after it, before the audit and the event.
  */
 
 /** Emitted once per effective approval (welcome e-mail subscriber, CU-00 step 6). */
@@ -129,18 +132,20 @@ export async function setCustomerApproval(connection: PoolClient, input: Approva
     );
   }
 
-  const { rows: updated } = await connection.query<CustomerApprovalRow>(
-    input.approved
-      ? `UPDATE "customer"
-            SET "is_wholesale_approved" = true, "wholesale_approved_at" = CURRENT_TIMESTAMP,
-                "wholesale_approved_by" = $2
-          WHERE "customer_id" = $1
-          RETURNING "is_wholesale_approved", "wholesale_approved_at", "wholesale_approved_by"`
-      : `UPDATE "customer"
-            SET "is_wholesale_approved" = false, "wholesale_approved_at" = NULL, "wholesale_approved_by" = NULL
-          WHERE "customer_id" = $1
-          RETURNING "is_wholesale_approved", "wholesale_approved_at", "wholesale_approved_by"`,
-    input.approved ? [customer.customer_id, input.actor.adminUserId] : [customer.customer_id]
+  const { rows: updated } = await withApprovalWrite(connection, () =>
+    connection.query<CustomerApprovalRow>(
+      input.approved
+        ? `UPDATE "customer"
+              SET "is_wholesale_approved" = true, "wholesale_approved_at" = CURRENT_TIMESTAMP,
+                  "wholesale_approved_by" = $2
+            WHERE "customer_id" = $1
+            RETURNING "is_wholesale_approved", "wholesale_approved_at", "wholesale_approved_by"`
+        : `UPDATE "customer"
+              SET "is_wholesale_approved" = false, "wholesale_approved_at" = NULL, "wholesale_approved_by" = NULL
+            WHERE "customer_id" = $1
+            RETURNING "is_wholesale_approved", "wholesale_approved_at", "wholesale_approved_by"`,
+      input.approved ? [customer.customer_id, input.actor.adminUserId] : [customer.customer_id]
+    )
   );
   const after = stateOf(updated[0]);
 

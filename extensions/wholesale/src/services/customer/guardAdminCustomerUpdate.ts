@@ -24,7 +24,10 @@ import { normalizePhone, PROTECTED_CUSTOMER_FIELDS } from './sanitizeWholesaleFi
  *   changed tax_id with `checkTaxpayer` (same rules as the profile hook
  *   `revokeOnContactChange`), refusing an invalid one with its taxpayer code.
  *
- * Only reads; nothing is written here.
+ * Only reads; nothing is written here. The read is not atomic with the core
+ * write (the core handler has no transaction), so an approval committed in
+ * between is caught by the migration 1.1.1 `customer` trigger instead
+ * (SQLSTATE WH001 `WHOLESALE_REVOKE_REQUIRED`); core answers that one 500.
  */
 
 type CustomerData = Record<string, unknown>;

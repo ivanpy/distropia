@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import pg from 'pg';
 import migrate100 from '../../../migration/Version-1.0.0.js';
 import migrate110 from '../../../migration/Version-1.1.0.js';
+import { withApprovalWrite } from '../../../services/customer/approvalWriteFlag.js';
 
 const describeDb = process.env.DB_NAME ? describe : describe.skip;
 
@@ -87,7 +88,8 @@ describeDb('wholesale migration Version-1.1.0', () => {
   }
 
   async function insertCustomer(approved: boolean): Promise<number> {
-    return insertRow(
+    // Migration 1.1.1 (approval trigger): an approved row needs the approval write flag.
+    return withApprovalWrite(client, () => insertRow(
       'customer',
       {
         email: `wholesale-test-${randomUUID()}@example.com`,
@@ -96,7 +98,7 @@ describeDb('wholesale migration Version-1.1.0', () => {
         is_wholesale_approved: approved
       },
       'customer_id'
-    );
+    ));
   }
 
   async function insertQuote(overrides: Record<string, unknown> = {}): Promise<number> {

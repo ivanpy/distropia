@@ -38,6 +38,22 @@ declare module '@evershop/evershop/customer/services' {
   ): void;
 
   /**
+   * Runs after `updateCustomerData` inside the core `updateCustomer`
+   * transaction, called with the updated row first (`lib/util/hookable.ts`),
+   * although the core helper type omits it.
+   */
+  export function hookAfterUpdateCustomerData(
+    callback: (
+      this: Record<string, unknown>,
+      customer: CustomerRow,
+      uuid: string,
+      data: Record<string, unknown>,
+      connection: PoolClient
+    ) => void | Promise<void>,
+    priority?: number
+  ): void;
+
+  /**
    * Runs after `insertCustomerData` inside the registration transaction. Core
    * calls it with the inserted row first (`lib/util/hookable.ts`), although
    * the core helper type omits it.

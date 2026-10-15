@@ -23,6 +23,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import type { EvershopRequest } from '@evershop/evershop/types/request';
 import type { EvershopResponse } from '@evershop/evershop/types/response';
+import { withApprovalWrite } from '../../../services/customer/approvalWriteFlag.js';
 import { PROTECTED_CUSTOMER_FIELDS } from '../../../services/customer/sanitizeWholesaleFields.js';
 import { rucCheckDigit } from '../../../services/taxpayer/rucCheckDigit.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
@@ -135,7 +136,8 @@ describeDb('admin customer PATCH guard (D-P2-7)', () => {
   });
 
   async function insertCustomer(approved: boolean, wholesale = true): Promise<Row> {
-    const { rows } = await fixtures.client.query(
+    // Migration 1.1.1 (approval trigger): an approved row needs the approval write flag.
+    const { rows } = await withApprovalWrite(fixtures.client, () => fixtures.client.query(
       `INSERT INTO "customer" ("email", "password", "full_name", "business_name", "tax_id", "phone",
                                "wholesale_requested_at", "is_wholesale_approved", "wholesale_approved_at",
                                "wholesale_approved_by")
@@ -148,7 +150,7 @@ describeDb('admin customer PATCH guard (D-P2-7)', () => {
         approved ? new Date() : null,
         approved ? 7 : null
       ]
-    );
+    ));
     return rows[0] as Row;
   }
 

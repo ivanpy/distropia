@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { writeAudit } from '../audit/writeAudit.js';
 import { checkTaxpayer } from '../taxpayer/checkTaxpayer.js';
+import { armApprovalWrite, disarmApprovalWrite } from './approvalWriteFlag.js';
 import { normalizePhone } from './sanitizeWholesaleFields.js';
 
 /**
@@ -18,6 +19,11 @@ import { normalizePhone } from './sanitizeWholesaleFields.js';
  * Also normalizes `phone` like the registration does and validates a changed
  * `tax_id` with `checkTaxpayer` (format, check digit, provider of the runtime
  * mode), which throws `TaxpayerError` and makes core roll the update back.
+ *
+ * Migration 1.1.1 (W4c): the `customer` trigger only lets core write the
+ * revocation while the approval write flag is armed, so the hook arms it when
+ * it revokes and `disarmApprovalWriteAfterUpdate` (after-hook of the same
+ * core function) disarms it once core has written the row.
  */
 
 type CustomerData = Record<string, unknown>;
@@ -91,6 +97,8 @@ export async function revokeApprovalOnContactChange(
   data.is_wholesale_approved = false;
   data.wholesale_approved_at = null;
   data.wholesale_approved_by = null;
+  // Transaction-local: also dropped if core rolls the update back.
+  await armApprovalWrite(connection);
 
   const contact = (phone: unknown, taxId: unknown) => ({ phone: comparable(phone), tax_id: comparable(taxId) });
   await writeAudit(connection, {
@@ -112,4 +120,19 @@ export async function revokeApprovalOnContactChange(
     },
     reason: `Automatic revocation (RF-22): ${changed.join(', ')} changed`
   });
+}
+
+/**
+ * After-hook of core `updateCustomerData`, called with
+ * `(result, uuid, data, connection)` inside the core update transaction:
+ * disarms the approval write flag the before-hook may have armed, so later
+ * hooks of the transaction cannot change the approval.
+ */
+export async function disarmApprovalWriteAfterUpdate(
+  _customer: unknown,
+  _uuid: string,
+  _data: CustomerData,
+  connection: PoolClient
+): Promise<void> {
+  await disarmApprovalWrite(connection);
 }

@@ -17,6 +17,7 @@ import type { EvershopRequest } from '@evershop/evershop/types/request';
 import type { EvershopResponse } from '@evershop/evershop/types/response';
 import approveCustomer from '../../../api/approveCustomer/approveCustomer.js';
 import migrate110 from '../../../migration/Version-1.1.0.js';
+import migrate111 from '../../../migration/Version-1.1.1.js';
 import { setCustomerApproval } from '../../../services/customer/setCustomerApproval.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
 
@@ -107,6 +108,7 @@ describeDb('setCustomerApproval (T-2.6)', () => {
   beforeAll(async () => {
     fixtures = await openFixtures();
     await migrate110(fixtures.client);
+    await migrate111(fixtures.client);
   }, 30000);
 
   afterAll(async () => {

@@ -16,6 +16,7 @@ import type { EvershopRequest } from '@evershop/evershop/types/request';
 import type { EvershopResponse } from '@evershop/evershop/types/response';
 import { createApproveCustomerHandler } from '../../../api/approveCustomer/approveCustomer.js';
 import migrate110 from '../../../migration/Version-1.1.0.js';
+import migrate111 from '../../../migration/Version-1.1.1.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
 
 type Row = Record<string, unknown>;
@@ -101,6 +102,7 @@ describeDb('approval handler transaction path (R3-handler-txn-path-untested)', (
   beforeAll(async () => {
     fixtures = await openFixtures();
     await migrate110(fixtures.client);
+    await migrate111(fixtures.client);
   }, 30000);
 
   afterAll(async () => {

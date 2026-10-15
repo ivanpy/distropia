@@ -12,6 +12,12 @@
  */
 import { randomUUID } from 'crypto';
 import migrate110 from '../../../migration/Version-1.1.0.js';
+import migrate111 from '../../../migration/Version-1.1.1.js';
+import {
+  APPROVAL_WRITE_SETTING,
+  disarmApprovalWrite,
+  withApprovalWrite
+} from '../../../services/customer/approvalWriteFlag.js';
 import { revokeApprovalOnContactChange } from '../../../services/customer/revokeOnContactChange.js';
 import { rucCheckDigit } from '../../../services/taxpayer/rucCheckDigit.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
@@ -35,6 +41,7 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
   beforeAll(async () => {
     fixtures = await openFixtures();
     await migrate110(fixtures.client);
+    await migrate111(fixtures.client);
   }, 30000);
 
   afterAll(async () => {
@@ -42,7 +49,8 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
   });
 
   async function insertCustomer(approved: boolean): Promise<Row> {
-    const { rows } = await fixtures.client.query(
+    // Migration 1.1.1: an approved fixture row needs the approval write flag.
+    const { rows } = await withApprovalWrite(fixtures.client, () => fixtures.client.query(
       `INSERT INTO "customer" ("email", "password", "full_name", "business_name", "tax_id", "phone",
                                "wholesale_requested_at", "is_wholesale_approved", "wholesale_approved_at",
                                "wholesale_approved_by")
@@ -55,7 +63,7 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
         approved ? 7 : null,
         uniqueRuc()
       ]
-    );
+    ));
     return rows[0] as Row;
   }
 
@@ -68,8 +76,16 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
     return rows as Row[];
   }
 
+  /** Approval write flag left by the last `run` (core disarms it in the after-hook). */
+  let armed: string | null = null;
+
   async function run(customer: Row, data: Row): Promise<Row> {
     await revokeApprovalOnContactChange(customer.uuid as string, data, fixtures.client);
+    const { rows } = await fixtures.client.query(`SELECT current_setting($1, true) AS "value"`, [
+      APPROVAL_WRITE_SETTING
+    ]);
+    armed = rows[0].value as string | null;
+    await disarmApprovalWrite(fixtures.client);
     return data;
   }
 
@@ -116,6 +132,8 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
         reason: 'Automatic revocation (RF-22): phone changed'
       }
     ]);
+    // Migration 1.1.1: core writes the revocation with the approval write flag armed.
+    expect(armed).toBe('on');
   });
 
   it('a tax_id change is validated again, normalized and revokes the approval', async () => {
@@ -134,6 +152,7 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
     const audits = await auditRows(customer.uuid);
     expect(audits).toHaveLength(1);
     expect(audits[0].reason).toBe('Automatic revocation (RF-22): tax_id changed');
+    expect(armed).toBe('on');
   });
 
   it.each([
@@ -153,6 +172,7 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
     const data = await run(customer, { phone: '+595 (981) 123-456', tax_id: customer.tax_id });
     expect(data).toEqual({ phone: '+595981123456', tax_id: customer.tax_id });
     expect(await auditRows(customer.uuid)).toEqual([]);
+    expect(armed).not.toBe('on');
   });
 
   it('a changed RUC with the same number in another format is normalized without revoking', async () => {
@@ -169,6 +189,7 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
     const data = await run(customer, { phone: '+595982000111' });
     expect(data).toEqual({ phone: '+595982000111' });
     expect(await auditRows(customer.uuid)).toEqual([]);
+    expect(armed).not.toBe('on');
   });
 
   it('a change of other fields does not touch the approval', async () => {
@@ -176,5 +197,6 @@ describeDb('revokeApprovalOnContactChange (T-2.8)', () => {
     const data = await run(customer, { full_name: 'New name', email: 'other@example.com' });
     expect(data).toEqual({ full_name: 'New name', email: 'other@example.com' });
     expect(await auditRows(customer.uuid)).toEqual([]);
+    expect(armed).not.toBe('on');
   });
 });

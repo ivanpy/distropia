@@ -1,5 +1,6 @@
 import {
   hookAfterInsertCustomerData,
+  hookAfterUpdateCustomerData,
   hookBeforeInsertCustomerData,
   hookBeforeUpdateCustomerData
 } from '@evershop/evershop/customer/services';
@@ -19,7 +20,10 @@ import {
   insertRegistrationAddress,
   takeRegistrationAddress
 } from './services/customer/registrationAddress.js';
-import { revokeApprovalOnContactChange } from './services/customer/revokeOnContactChange.js';
+import {
+  disarmApprovalWriteAfterUpdate,
+  revokeApprovalOnContactChange
+} from './services/customer/revokeOnContactChange.js';
 import { assertRuntimeConfig } from './services/runtime/assertRuntimeConfig.js';
 
 /** Subset of the core `BootstrapContext` (`bin/lib/bootstrap/bootstrap.ts`). */
@@ -59,8 +63,10 @@ export default (context: BootstrapContext = {}) => {
 
   // RF-22 / A7: a phone or tax_id change on an approved customer revokes the
   // approval (audited) inside the core update transaction; a changed tax_id
-  // is validated again.
+  // is validated again. The revocation write needs the approval write flag
+  // of the 1.1.1 customer trigger; the after-hook disarms it.
   hookBeforeUpdateCustomerData(revokeApprovalOnContactChange);
+  hookAfterUpdateCustomerData(disarmApprovalWriteAfterUpdate);
 
   // ADR-06 item 5: price range filters and price sorting are inert for
   // approved wholesale viewers (decided per request, see priceFilterScope).
