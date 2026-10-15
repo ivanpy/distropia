@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "properties": {
+    "isEnabled": { "type": "boolean", "errorMessage": "isEnabled must be a boolean" },
+    "productLineUuid": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "errorMessage": "productLineUuid must be a product line uuid or null"
+    },
+    "basePrice": {
+      "type": ["number", "null"],
+      "exclusiveMinimum": 0,
+      "errorMessage": "basePrice must be a positive number or null"
+    },
+    "vatRate": { "enum": ["10", "5", "exempt"], "errorMessage": "vatRate must be one of 10, 5, exempt" },
+    "isCriticalConsumable": { "type": "boolean", "errorMessage": "isCriticalConsumable must be a boolean" },
+    "minQty": { "type": "integer", "minimum": 1, "errorMessage": "minQty must be a whole number of at least 1" },
+    "stepQty": { "type": "integer", "minimum": 1, "errorMessage": "stepQty must be a whole number of at least 1" },
+    "maxQty": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "errorMessage": "maxQty must be a whole number of at least 1 or null"
+    }
+  },
+  "required": ["isEnabled", "vatRate", "isCriticalConsumable", "minQty", "stepQty"],
+  "additionalProperties": false,
+  "errorMessage": {
+    "required": {
+      "isEnabled": "isEnabled is required",
+      "vatRate": "vatRate is required",
+      "isCriticalConsumable": "isCriticalConsumable is required",
+      "minQty": "minQty is required",
+      "stepQty": "stepQty is required"
+    },
+    "additionalProperties": "unknown field: tiers are edited on the product line; accepted fields are isEnabled, productLineUuid, basePrice, vatRate, isCriticalConsumable, minQty, stepQty and maxQty"
+  }
+}
