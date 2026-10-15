@@ -1,3 +1,7 @@
+import {
+  hookAfterInsertCustomerData,
+  hookBeforeInsertCustomerData
+} from '@evershop/evershop/customer/services';
 import { addProcessor } from '@evershop/evershop/lib/util/registry';
 import config from 'config';
 import { WHOLESALE_CONFIG_DEFAULTS } from './config/defaults.js';
@@ -10,6 +14,10 @@ import {
   sanitizeWholesaleOnUpdate,
   WHOLESALE_CUSTOMER_GUARD_PRIORITY
 } from './services/customer/sanitizeWholesaleFields.js';
+import {
+  insertRegistrationAddress,
+  takeRegistrationAddress
+} from './services/customer/registrationAddress.js';
 import { assertRuntimeConfig } from './services/runtime/assertRuntimeConfig.js';
 
 /** Subset of the core `BootstrapContext` (`bin/lib/bootstrap/bootstrap.ts`). */
@@ -40,6 +48,12 @@ export default (context: BootstrapContext = {}) => {
   // B2B registrations repeat the RUC check (CU-00 step 3).
   addProcessor('customerDataBeforeCreate', sanitizeWholesaleOnCreate, WHOLESALE_CUSTOMER_GUARD_PRIORITY);
   addProcessor('customerDataBeforeUpdate', sanitizeWholesaleOnUpdate, WHOLESALE_CUSTOMER_GUARD_PRIORITY);
+
+  // RF-19 / D-P2-6: a B2B registration stores its commercial/fiscal address as
+  // the default address inside the core registration transaction. `address`
+  // is removed from the customer data before the insert in every registration.
+  hookBeforeInsertCustomerData(takeRegistrationAddress);
+  hookAfterInsertCustomerData(insertRegistrationAddress);
 
   // ADR-06 item 5: price range filters and price sorting are inert for
   // approved wholesale viewers (decided per request, see priceFilterScope).

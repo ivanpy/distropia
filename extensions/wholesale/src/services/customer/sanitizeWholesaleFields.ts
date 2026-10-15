@@ -1,4 +1,5 @@
 import { checkTaxpayer } from '../taxpayer/checkTaxpayer.js';
+import { normalizeRegistrationAddress, REGISTRATION_ADDRESS_KEY } from './registrationAddress.js';
 
 /**
  * Mass-assignment guard (A9) and B2B registration data
@@ -40,7 +41,11 @@ export const normalizePhone = (raw: string): string => raw.replace(/[\s\-.()]/g,
  * `business_name` is a B2B registration: the RUC check is repeated (the
  * `ruc-check` answer is UX only) and throws `TaxpayerError`
  * (`RUC_INVALID_FORMAT`, `RUC_INVALID_CHECK_DIGIT`, `DNIT_401`), which makes
- * core roll the registration back.
+ * core roll the registration back. It must also carry its commercial/fiscal
+ * `address` (RF-19), validated here so an invalid request fails before the
+ * insert (`WholesaleAddressError`); the address row itself is written by the
+ * `insertCustomerData` hooks in `registrationAddress.ts`. A B2C registration
+ * drops any `address`.
  */
 export async function sanitizeWholesaleOnCreate(data: CustomerData): Promise<CustomerData> {
   const clean = withoutProtectedFields(data);
@@ -55,8 +60,11 @@ export async function sanitizeWholesaleOnCreate(data: CustomerData): Promise<Cus
     if (typeof clean.phone === 'string') {
       clean.phone = normalizePhone(clean.phone);
     }
+    clean[REGISTRATION_ADDRESS_KEY] = normalizeRegistrationAddress(clean[REGISTRATION_ADDRESS_KEY]);
     // ISO string: the query builder JSON-encodes object values in `given()`.
     clean.wholesale_requested_at = new Date().toISOString();
+  } else {
+    delete clean[REGISTRATION_ADDRESS_KEY];
   }
   return clean;
 }

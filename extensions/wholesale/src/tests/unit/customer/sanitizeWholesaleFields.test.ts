@@ -7,6 +7,8 @@
  * - A B2B registration (`tax_id` or `business_name` present) repeats the RUC
  *   check, stores the RUC with its check digit, sets `wholesale_requested_at`
  *   and, in development/demo, takes `business_name` from the DNIT mock.
+ * - A B2B registration must carry its commercial/fiscal `address` (T-2.4c);
+ *   a B2C registration drops it.
  * - The update processor is shared with core address updates, so it only
  *   removes keys.
  */
@@ -17,6 +19,7 @@ import {
   sanitizeWholesaleOnCreate,
   sanitizeWholesaleOnUpdate
 } from '../../../services/customer/sanitizeWholesaleFields.js';
+import { WholesaleAddressError } from '../../../services/customer/registrationAddress.js';
 import { TaxpayerError } from '../../../services/taxpayer/TaxpayerError.js';
 import { describeDb, openFixtures, type Fixtures } from '../graphql/storefrontSchema.js';
 
@@ -33,7 +36,15 @@ const B2B = {
   full_name: 'Buyer',
   tax_id: ' 80.012.344-1 ',
   business_name: 'Typed by the customer',
-  phone: '+595 981 123-456'
+  phone: '+595 981 123-456',
+  address: {
+    full_name: 'Ferreteria Central',
+    address_1: ' Av. Mcal. Lopez 1234 ',
+    province: 'PY-ASU',
+    country: 'PY',
+    postcode: '1209',
+    is_default: 0
+  }
 };
 
 async function codeOf(promise: Promise<unknown>): Promise<string | undefined> {
@@ -75,6 +86,30 @@ describe('sanitizeWholesaleOnCreate', () => {
     });
     // The input object is not mutated.
     expect(input.is_wholesale_approved).toBe(true);
+  });
+
+  it('B2C registration drops an address', async () => {
+    const clean = await sanitizeWholesaleOnCreate({ email: 'b2c@example.com', address: B2B.address });
+    expect(clean).not.toHaveProperty('address');
+  });
+
+  it('B2B registration keeps only the trimmed address columns', async () => {
+    const clean = await sanitizeWholesaleOnCreate({ ...B2B });
+    expect(clean.address).toEqual({
+      full_name: 'Ferreteria Central',
+      address_1: 'Av. Mcal. Lopez 1234',
+      province: 'PY-ASU',
+      country: 'PY',
+      postcode: '1209'
+    });
+  });
+
+  it.each([
+    [undefined, 'WHOLESALE_ADDRESS_REQUIRED'],
+    [{ ...B2B.address, postcode: '' }, 'WHOLESALE_ADDRESS_INVALID']
+  ])('B2B registration with address %p is refused with %s', async (address, code) => {
+    await expect(sanitizeWholesaleOnCreate({ ...B2B, address })).rejects.toMatchObject({ code });
+    await expect(sanitizeWholesaleOnCreate({ ...B2B, address })).rejects.toBeInstanceOf(WholesaleAddressError);
   });
 
   it('B2B registration in development: RUC with check digit, mock name, pending', async () => {
