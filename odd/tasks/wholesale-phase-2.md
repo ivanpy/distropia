@@ -45,7 +45,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W3** Registration + RUC: T-2.3 (RED), T-2.4, T-2.4c, T-2.4b, T-2.35 … T-2.38 — route: delegated direct (2 writers) — commits `c044f0e4`, `1f03eb94`, `3f34c04a`, `c5c9f8df`, `d13a20ff` — reviews approved
 - [x] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 (+ tax_id revalidation on update, R3-update-taxid-unvalidated) — route: delegated direct (writer + preparation trigger: SDD design + migrations + W3 services) — commits `1cc2081e`, `d1b9b042`, `e767fc7a`, `eadb3a72` (+1330) — review approved
 - [ ] **W4b** Close customer-write bypasses (D-P2-7, user 2026-10-15: "security is crucial, fix before proceeding"): (a) middleware on core admin `PATCH /api/customers/:id` strips approval columns and refuses (422) phone/`tax_id` changes on an approved wholesale customer; (b) sweep every other core route/service that writes `customer` for the same bypass; (c) storefront registration must not set `group_id`/`status` from the body; (d) test the approval handler's transaction path (R3-handler-txn-path-untested) — route: delegated direct (writer + mapping) — commits `ee668e30`, `71089952`, `350d4a59`, `b9a79941` (+978/-66) — review approved
-- [ ] **W4c** Close the admin-PATCH read/write race (`R3-guard-read-write-race`): core admin PATCH is not transactional — **awaiting user decision**
+- [ ] **W4c** Close the admin-PATCH read/write race (`R3-guard-read-write-race`): core admin PATCH is not transactional — decided 2026-10-15 by the user: DB trigger on `customer` (new migration) rejecting phone/`tax_id` changes on an approved customer unless the same statement revokes, and approval-column changes unless flagged by the audited approval path (transaction-local setting) — route: delegated direct (writer) — commit `41329a82` (+737/-50) — review approved
 - [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
@@ -156,6 +156,15 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Review `review-875d69332740a9d2` (`750a642c..b9a79941`, 1044 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-guard-read-write-race` (warning → W4c), `R3-business-name-overwrite-untested`, `R3-inventory-route-module-assumption` (suggestions).
 - Remaining gaps: admin PATCH DB errors (E.164, duplicate wholesale RUC) still → 500 (G-b family).
 
+### W4c (`41329a82`)
+
+- `migration/Version-1.1.1.ts`: `wholesale_contact_value(text)` + `wholesale_customer_approval_guard()` `BEFORE INSERT OR UPDATE` trigger on `customer` (creation guarded, re-runnable). Rule 1: approved → approved with a changed phone/`tax_id` (trimmed, blank = NULL) → `WH001 WHOLESALE_REVOKE_REQUIRED` (the flag does not lift it). Rule 2: changes to `is_wholesale_approved`, `wholesale_approved_at`, `wholesale_approved_by`, `wholesale_requested_at` (UPDATE) or approval columns on INSERT need `wholesale.approval_write = 'on'` → else `WH002 WHOLESALE_APPROVAL_PROTECTED`. `wholesale_requested_at` allowed on INSERT (registration), protected on UPDATE.
+- `services/customer/approvalWriteFlag.ts` (`set_config(..., true)`, tx-local): `setCustomerApproval` arms only around its UPDATE; `revokeOnContactChange` arms only when revoking and an `updateCustomerData` after-hook disarms.
+- RED: TS2307, then behaviour 18 failed (WH002 on approve/revoke/auto-revocation) → GREEN 424/424. Mutation check: removing the disarm after-hook fails the core end-to-end test. Flag-leak tests (commit/rollback, same backend); race simulated (approval lands after the guard read → core-style write rejected WH001, row unchanged).
+- Checks: suite 424/424 (writer + parent spot check), `tsc` clean, build ok, `packages/evershop/src` diff empty; GGA passed.
+- Review `review-5cd9737c8d3a7f6b` (`c477ae36..41329a82`, 787 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-admin-patch-under-trigger-unproved` (warning — admin PATCH guard tests don't apply 1.1.1), `R3-arm-window-before-core-write` (suggestion).
+- Operator notes: manual SQL approvals need `SELECT set_config('wholesale.approval_write','on',true)` in the same transaction and are not audited — use the endpoint. In the race, core admin PATCH answers 500 with `WHOLESALE_REVOKE_REQUIRED: …` (core catches errors; no 422 without touching core). DB test suites must lock `customer` first (apply 1.0.0 first) to avoid deadlocks. Migration 1.1.1 applies on the next `npm run dev`.
+
 ## Next step
 
-User decision on W4c (admin PATCH race), then W5 (product lines + per-product data).
+W5 (product lines + per-product data). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 + 1.1.1.
