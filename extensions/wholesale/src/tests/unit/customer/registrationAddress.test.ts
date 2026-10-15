@@ -20,6 +20,13 @@ const CORE_DIST = path.resolve(process.cwd(), 'packages/evershop/dist');
 const EXTENSION_DIST = path.resolve(process.cwd(), 'extensions/wholesale/dist');
 const EMAIL_PREFIX = 'wholesale-t24c-';
 
+// The core service writes `customer` through the module pool, outside any
+// fixture transaction: it queues behind every DB suite that holds the
+// `customer` lock (migration 1.0.0 in a rolled-back transaction) while Jest
+// runs suites in parallel. The default 5 s per test is not enough under
+// that load (R3-test-lock-contention): the DB tests get a longer timeout.
+const CORE_POOL_TIMEOUT_MS = 30000;
+
 type Row = Record<string, unknown>;
 type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Row[] }> };
 type CorePool = Queryable & { end: () => Promise<void> };
@@ -135,7 +142,7 @@ describeDb('B2B registration address (T-2.4c)', () => {
       await pool.query('DELETE FROM "customer" WHERE "email" LIKE $1', [`${EMAIL_PREFIX}%`]);
       await pool.end();
     }
-  });
+  }, CORE_POOL_TIMEOUT_MS);
 
   const email = (label: string) => `${EMAIL_PREFIX}${label}-${Date.now()}@example.com`;
 
@@ -176,33 +183,33 @@ describeDb('B2B registration address (T-2.4c)', () => {
     expect(addresses[0].uuid).not.toBe('x');
     // The probe threw: the core transaction rolled back both rows.
     expect(await countByEmail(data.email)).toBe(0);
-  });
+  }, CORE_POOL_TIMEOUT_MS);
 
   it('B2B without address is refused with WHOLESALE_ADDRESS_REQUIRED and leaves no row', async () => {
     const data = b2b('missing');
     expect(await codeOf(createCustomer(data))).toBe('WHOLESALE_ADDRESS_REQUIRED');
     expect(snapshot).toBeNull();
     expect(await countByEmail(data.email)).toBe(0);
-  });
+  }, CORE_POOL_TIMEOUT_MS);
 
   it('B2B with an incomplete address is refused with WHOLESALE_ADDRESS_INVALID and leaves no row', async () => {
     const data = b2b('incomplete', { address: { ...ADDRESS, address_1: '  ', postcode: undefined } });
     expect(await codeOf(createCustomer(data))).toBe('WHOLESALE_ADDRESS_INVALID');
     expect(snapshot).toBeNull();
     expect(await countByEmail(data.email)).toBe(0);
-  });
+  }, CORE_POOL_TIMEOUT_MS);
 
   it('B2C without address is unchanged: no address row', async () => {
     const data = { email: email('b2c'), password: 'Passw0rd!', full_name: 'Retail' };
     expect(await codeOf(createCustomer(data))).toBe('PROBE');
     expect((snapshot as Snapshot).addresses).toEqual([]);
     expect(await countByEmail(data.email)).toBe(0);
-  });
+  }, CORE_POOL_TIMEOUT_MS);
 
   it('B2C with an address: ignored, no address row', async () => {
     const data = { email: email('b2c-address'), password: 'Passw0rd!', full_name: 'Retail', address: ADDRESS };
     expect(await codeOf(createCustomer(data))).toBe('PROBE');
     expect((snapshot as Snapshot).addresses).toEqual([]);
     expect((snapshot as Snapshot).customer).not.toHaveProperty('address');
-  });
+  }, CORE_POOL_TIMEOUT_MS);
 });
