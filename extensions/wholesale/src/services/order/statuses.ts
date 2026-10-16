@@ -60,7 +60,9 @@ export const INITIAL_PAYMENT_STATUS: PaymentStatus = 'pending';
 const PAYMENT_TRANSITIONS: Readonly<Record<PaymentStatus, readonly PaymentStatus[]>> = Object.freeze({
   pending: ['paid', 'unpaid'],
   unpaid: ['partially_paid', 'paid'],
-  partially_paid: ['paid', 'unpaid'],
+  // Self-transition: another partial FIFO allocation, or a void that still
+  // leaves part of the order paid, keeps the status.
+  partially_paid: ['partially_paid', 'paid', 'unpaid'],
   paid: ['unpaid', 'partially_paid']
 });
 

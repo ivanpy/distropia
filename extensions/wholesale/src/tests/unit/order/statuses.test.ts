@@ -51,6 +51,8 @@ const PAYMENT_ALLOWED: [PaymentStatus, PaymentStatus][] = [
   ['pending', 'unpaid'],
   ['unpaid', 'partially_paid'],
   ['unpaid', 'paid'],
+  // Another partial FIFO allocation, or a void that leaves the order partially paid.
+  ['partially_paid', 'partially_paid'],
   ['partially_paid', 'paid'],
   ['paid', 'unpaid'],
   ['paid', 'partially_paid'],

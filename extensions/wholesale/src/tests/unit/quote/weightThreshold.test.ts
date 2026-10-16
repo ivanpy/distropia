@@ -3,13 +3,19 @@
  * in kg and converted to the store weight unit (`getWeightUnit()`: kg, g,
  * lb, oz) before it is compared with `product.weight` sums, which are stored
  * unit-less in that unit.
+ *
+ * The core setting module is mocked with a non-kg store unit, so the default
+ * of `freeShippingMaxWeightInStoreUnit` provably reads `getWeightUnit()`
+ * (R3-default-weight-unit-test-tautological).
  */
-import { getWeightUnit } from '@evershop/evershop/setting/services';
-import {
-  freeShippingMaxWeightInStoreUnit,
-  kgToWeightUnit,
-  normalizeWeightUnit
-} from '../../../services/quote/weightThreshold.js';
+import { jest } from '@jest/globals';
+
+const getWeightUnit = jest.fn(() => 'lb');
+jest.unstable_mockModule('@evershop/evershop/setting/services', () => ({ getWeightUnit }));
+
+const { freeShippingMaxWeightInStoreUnit, kgToWeightUnit, normalizeWeightUnit } = await import(
+  '../../../services/quote/weightThreshold.js'
+);
 
 describe('kgToWeightUnit (T-2.47)', () => {
   it.each([
@@ -64,8 +70,13 @@ describe('normalizeWeightUnit (T-2.47)', () => {
 });
 
 describe('freeShippingMaxWeightInStoreUnit (T-2.47)', () => {
-  it('converts with the core store weight unit', () => {
-    expect(freeShippingMaxWeightInStoreUnit(100)).toBe(kgToWeightUnit(100, getWeightUnit()));
+  it('converts with the core store weight unit by default', () => {
+    getWeightUnit.mockClear();
+    expect(freeShippingMaxWeightInStoreUnit(100)).toBeCloseTo(100 / 0.45359237, 9);
+    expect(getWeightUnit).toHaveBeenCalledTimes(1);
+
+    getWeightUnit.mockReturnValueOnce('g');
+    expect(freeShippingMaxWeightInStoreUnit(2)).toBe(2000);
   });
 
   it('accepts an explicit unit and keeps null', () => {
