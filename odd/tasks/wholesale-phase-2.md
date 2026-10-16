@@ -46,7 +46,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W4** Approval + audit: T-2.39, T-2.6, T-2.7, T-2.8 (+ tax_id revalidation on update, R3-update-taxid-unvalidated) — route: delegated direct (writer + preparation trigger: SDD design + migrations + W3 services) — commits `1cc2081e`, `d1b9b042`, `e767fc7a`, `eadb3a72` (+1330) — review approved
 - [ ] **W4b** Close customer-write bypasses (D-P2-7, user 2026-10-15: "security is crucial, fix before proceeding"): (a) middleware on core admin `PATCH /api/customers/:id` strips approval columns and refuses (422) phone/`tax_id` changes on an approved wholesale customer; (b) sweep every other core route/service that writes `customer` for the same bypass; (c) storefront registration must not set `group_id`/`status` from the body; (d) test the approval handler's transaction path (R3-handler-txn-path-untested) — route: delegated direct (writer + mapping) — commits `ee668e30`, `71089952`, `350d4a59`, `b9a79941` (+978/-66) — review approved
 - [ ] **W4c** Close the admin-PATCH read/write race (`R3-guard-read-write-race`): core admin PATCH is not transactional — decided 2026-10-15 by the user: DB trigger on `customer` (new migration) rejecting phone/`tax_id` changes on an approved customer unless the same statement revokes, and approval-column changes unless flagged by the audited approval path (transaction-local setting) — route: delegated direct (writer) — commit `41329a82` (+737/-50) — review approved
-- [ ] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — ~650 lines — route: delegated direct, two sequential writers (W5a lines: T-2.40 … T-2.43; W5b per-product rule: T-2.44, T-2.11 … T-2.17), review per slice — W5a done (`cb84abdb`, `95a99e8c`, `2f3b2d6a`, `55bfd622`, `41adcdfe`; review approved) — **W5b in progress**
+- [x] **W5** Product lines + per-product data: T-2.40 … T-2.44, T-2.11 … T-2.17 — route: delegated direct, two sequential writers (W5a lines: T-2.40 … T-2.43; W5b per-product rule: T-2.44, T-2.11 … T-2.17), review per slice — W5a `cb84abdb`, `95a99e8c`, `2f3b2d6a`, `55bfd622`, `41adcdfe`; W5b `fc35b8ad`, `e1873fa9`, `a6683858`, `8091077d`, `e6f486c6`, `d5103ac6`, `1c1c2b60`, `733c9882` — reviews approved
 - [ ] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
 - [ ] **W8** `POST /api/wholesale/request-quote` + trust proxy: T-2.29, T-2.30 — ~250 lines
@@ -176,6 +176,20 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Review `review-56245aa953612127` (`f4ca3ca9..41adcdfe`, 1858 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-handler-next-inside-try` (`productLineHandler.ts:64-81`, warning — `next()` runs inside the try after COMMIT, so a downstream throw would trigger a rollback and a second `next(e)`) → fold into W5b for both handler factories.
 - Gaps: HTTP not exercised live; core HTML escaping can push a label past 64 → 422 `LABEL_TOO_LONG`.
 
+### W5b (`fc35b8ad` … `733c9882`)
+
+- `fc35b8ad` R3-handler-next-inside-try: `next()` after try/catch in both admin handlers; RED 2 failed (next called twice) → GREEN. Shared `services/admin/adminTransactionHandler.ts`.
+- T-2.44 (`e1873fa9`): `services/rule/isQuotable.ts` (`isQuotable`, `loadQuoteProducts` with fixed query count; null weight kept). RED TS2307 → GREEN 15/15.
+- T-2.11/T-2.12 (`a6683858`): `saveRule` (`insertOnUpdate` on `product_id`, never writes `tiers`, `FOR UPDATE` on product) / `getRule` (uuids only, line + tiers, `isQuotable`). GREEN 37/37 (rule folder).
+- T-2.13 (`8091077d`): `POST /api/wholesale/products/:id/rule` (private; v2.0 schema; `tiers` → core 400). 404 `PRODUCT_NOT_FOUND`, 422 `PRODUCT_LINE_NOT_FOUND` / `INVALID_RULE` with `details.field`. Omitted optional keys keep stored values, explicit `null` clears. Not audited.
+- T-2.14 (`e6f486c6`): `validateQuantity` (min/step/max, nearest lower/upper). GREEN 20/20.
+- T-2.15 (`d5103ac6`): `services/cart/wholesaleCartItemFields.ts` — extra resolver on core `qty` (error key `wholesale_item`) + `updateCartItemQty` after-hook that refuses (core saves errored items on qty update). Decided by cart owner (`cart.customer_id`), not the viewer. E2E through compiled core `Cart`: 13 with min 6 / step 6 refused; non-quotable refused; B2C/anonymous unaffected; messages carry no amounts. GREEN 10/10.
+- T-2.16 (`1c1c2b60`): admin `Product.wholesaleRule` (`WholesaleProductRule`, no tiers). RED 4 → GREEN 5/5.
+- T-2.17 (`733c9882`): storefront `Product.wholesaleConstraint` — approved viewer (DB re-read) + quotable product only, else null; schema-walk guard (only `WholesaleProductConstraint` + `Int` reachable, no price/tier/tax-like names). RED 6 → GREEN 6/6.
+- Checks: suite 600/600 (writer twice + parent spot check), `tsc` clean, build ok, `packages/evershop/src` diff empty; GGA passed. No migration needed.
+- Review `review-25a26ec4ee3057e3` (`bd62ec5c..733c9882`, 2596 lines, medium, reliability): consent granted, approved and acknowledged. Advisory: `R3-baseprice-decimal-epsilon` (`saveRule.ts:64-69`, warning — the 1e-6 epsilon on `value*100` loses meaning near the `numeric(14,2)` maximum, so a 3-decimal value could be rounded silently by PostgreSQL), `R3-stale-error-test-swallows-refusal` (suggestion).
+- Gaps: "13 with step 6 fails" holds for min 6 (RF-08 grid starts at min; with min 1 / step 6, 13 is valid); refused cart qty → core 500, not 422 (G-b family); N+1 on `wholesaleConstraint` / `wholesaleRule` for listings; a DB failure in the cart item resolver blocks logged-in B2C cart loads (fail closed); live HTTP not exercised.
+
 ## Next step
 
-W5b (per-product rule: T-2.44, T-2.11 … T-2.17). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 + 1.1.1.
+W6 (quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 + 1.1.1.
