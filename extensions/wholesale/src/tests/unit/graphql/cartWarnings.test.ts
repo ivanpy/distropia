@@ -111,6 +111,44 @@ describeDb('Cart.wholesaleWarnings (T-2.48)', () => {
     expect(await warnings(approved.customerId, [])).toEqual([]);
   });
 
+  it('does not warn MINIMUM_ORDER_NOT_MET when every line is non-quotable or off the grid', async () => {
+    const noRule = await insertProduct(pool, { rule: false });
+    const stepped = await insertProduct(pool, { lineId, minQty: 6, stepQty: 6 });
+    expect(await warnings(approved.customerId, [{ product: noRule, qty: 1 }])).toEqual([]);
+    expect(await warnings(approved.customerId, [{ product: stepped, qty: 13 }])).toEqual([]);
+    expect(
+      await warnings(approved.customerId, [
+        { product: noRule, qty: 1 },
+        { product: stepped, qty: 13 }
+      ])
+    ).toEqual([]);
+  });
+
+  it('does not warn MINIMUM_ORDER_NOT_MET when an excluded line sits next to quotable ones', async () => {
+    const noRule = await insertProduct(pool, { rule: false });
+    const stepped = await insertProduct(pool, { lineId, minQty: 6, stepQty: 6 });
+    // Below the minimum on its own, but the cart also holds lines the quote would refuse.
+    expect(
+      await warnings(approved.customerId, [
+        { product, qty: 1 },
+        { product: noRule, qty: 1 }
+      ])
+    ).toEqual([]);
+    expect(
+      await warnings(approved.customerId, [
+        { product, qty: 1 },
+        { product: stepped, qty: 13 }
+      ])
+    ).toEqual([]);
+    // The mix warning still reflects the quotable lines.
+    expect(
+      await warnings(approved.customerId, [
+        { product: consumable, qty: enough },
+        { product: noRule, qty: 1 }
+      ])
+    ).toEqual(['MIX_RULE_NOT_MET']);
+  });
+
   it('keeps the cart and returns no warning when the calculation fails', async () => {
     // A negative weight makes calculateQuote throw on invalid product data.
     const broken = await insertProduct(pool, { lineId, weight: -1 });
