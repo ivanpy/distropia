@@ -50,7 +50,7 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - [x] **W6** Quote calculation: T-2.45, T-2.46, T-2.49, T-2.50, T-2.51, T-2.47, T-2.48, T-2.19 … T-2.22 — ~800 lines — split into two sequential slices, review per slice
   - [x] **W6a** Pure money + calculation: T-2.46, T-2.49, T-2.47, T-2.50, T-2.45 — route: delegated direct (writer + preparation trigger: SDD §8 + W5 services) — commits `06b5f8b2`, `a32921e3`, `7f096c96`, `dcafa5c5`, `0cc6a57b` (+1476) — review `review-a22c3eb892488ca2` approved (medium, reliability lens); advisory: R3-payment-partial-self-transition (no `partially_paid → partially_paid`; fix in W6b or before payments), R3-default-weight-unit-test-tautological
   - [x] **W6b** Quote persistence: T-2.19, T-2.20, T-2.21, T-2.22, T-2.48, T-2.51 (+ W6a advisories) — route: delegated direct (writer) — commits `687ed57f`, `3c22d058`, `144fd48f`, `0c90515f`, `a1410a6e` (+2508/-10) — review `review-b888092c71519161` approved (medium, reliability lens); advisory → W6c: R3 cart-warnings error nulls the whole cart (WARNING, `CartWarnings.resolvers.ts:24`), excluded/non-quotable lines surface a misleading `MINIMUM_ORDER_NOT_MET` (`wholesaleWarnings.ts:28-33`), `startTransaction` before `try` leaks the connection if BEGIN fails (`createQuote.ts:238-239`)
-  - [ ] **W6c** W6b review advisories (above) — route: delegated direct (writer)
+  - [x] **W6c** W6b review advisories (above) — route: delegated direct (writer) — commits `ded62fad`, `9e6bb6b6`, `c2380010` (+139/-14)
 - [ ] **W7** Anti-bot: T-2.23 … T-2.28 — ~450 lines
 - [ ] **W8** `POST /api/wholesale/request-quote` + trust proxy: T-2.29, T-2.30 — ~250 lines
 
@@ -214,6 +214,14 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 - Checks: `tsc` clean, build ok, suite 770/770 (`--runInBand`), `packages/evershop/src` diff empty; GGA passed on every commit.
 - Writer choices: emit only for free freight (CU-02 diagram; special waits for `wholesale_quote_ready`); global quote counter (not reset per year); `sub_total` = Σ base × qty rounded once; currency from `wholesale.quote.currency`; `maskPhone` assumes a 3-digit country code; `wholesaleQuotes` grid query left for Phase 4.
 - Gaps: `note` of the request body has no column in 1.0.0/1.1.0 (not persisted; W8 decides); an emit failure after COMMIT leaves a free-freight quote in `DRAFT_QUOTE` without WhatsApp (no outbox/sweeper yet); migration 1.1.2 applies on the next `npm run dev`.
+
+### W6c (`ded62fad`, `9e6bb6b6`, `c2380010`)
+
+- Cart warnings failure (`ded62fad`): `Cart.wholesaleWarnings` wraps the viewer re-read and the calculation in one `try`; an error is logged (`@evershop/evershop/lib/log`) and answered `[]`, so the non-null field never nulls the storefront cart. RED 2 failed (negative product weight → `calculateQuote` throws; context pool whose `query` rejects) → GREEN.
+- Excluded lines (`9e6bb6b6`): the SDD defines only `MINIMUM_ORDER_NOT_MET` / `MIX_RULE_NOT_MET` (endpoints contract `WholesaleCartWarning`, arch §8, security A16) and no code for non-quotable or off-grid lines, so `MINIMUM_ORDER_NOT_MET` is not emitted while the cart holds a non-quotable product or an off-grid quantity (`createQuote` refuses first with `PRODUCT_NOT_QUOTABLE` / `INVALID_QUANTITY`); `MIX_RULE_NOT_MET` still reflects the quotable lines. RED 2 failed (all-excluded and mixed carts) → GREEN.
+- Connection release (`c2380010`): `startTransaction` moved inside the `try` of `createQuote`; a failing ROLLBACK releases the client with the error (pool discards it) instead of leaking it. RED 2 failed (injected BEGIN failure, BEGIN + ROLLBACK failure: 0 releases) → GREEN (exactly 1 release).
+- Checks: `tsc` clean, build ok, suite 776/776 (`--runInBand`), `packages/evershop/src` diff empty; GGA passed on every commit (its first-pass note on the viewer check outside the `try` was folded into `ded62fad`).
+- Writer choice: the mix warning is kept for carts with excluded lines (an excluded line could in theory have changed the mix share; not covered by the SDD, left as is).
 
 ## Next step
 
