@@ -1,0 +1,112 @@
+"""
+A wholesale quote (CU-02, ADR-13, ADR-14). Admin-only type: it carries base
+prices, the SIFEN breakdown and the customer.
+"""
+type WholesaleQuote {
+  uuid: String!
+  quoteNumber: String!
+  """
+  DRAFT_QUOTE | AWAITING_SHIPPING_QUOTE | QUOTE_SENT | QUOTE_APPROVED | QUOTE_REJECTED | QUOTE_EXPIRED | SEND_FAILED
+  """
+  status: String!
+  customer: Customer
+  currency: String!
+  subTotal: Float!
+  discountTotal: Float!
+  """
+  Products only (after tiers and the mix rule).
+  """
+  netTotal: Float!
+  freightAmount: Float!
+  vatTotal: Float!
+  """
+  = taxBreakdown.dTotOpe. Products only while the freight is not quoted.
+  """
+  grandTotal: Float!
+  """
+  VAT per rate, derived from taxBreakdown.
+  """
+  vatBreakdown: [WholesaleVatLine!]!
+  taxBreakdown: SifenTaxBreakdown!
+  """
+  Store weight unit; null when a product has no weight.
+  """
+  totalWeight: Float
+  """
+  free | special
+  """
+  freightLabel: String!
+  freightSetAt: String
+  mixRuleApplied: Boolean!
+  """
+  Product lines and, once quoted, the FLETE_LOGISTICA service line.
+  """
+  items: [WholesaleQuoteItem!]!
+  orderUuid: String
+  lastError: String
+  """
+  Null until the quote is sent.
+  """
+  expiresAt: String
+  createdAt: String!
+}
+
+type WholesaleQuoteItem {
+  uuid: String!
+  """
+  product | service
+  """
+  lineType: String!
+  """
+  FLETE_LOGISTICA on the freight line.
+  """
+  serviceCode: String
+  productSku: String!
+  productName: String!
+  productLineName: String
+  tierLabel: String
+  qty: Int!
+  """
+  Base net price (product line) or freight net (service line).
+  """
+  unitPrice: Float!
+  discountPercent: Float!
+  mixRuleApplied: Boolean!
+  vatRate: String!
+  vatAmount: Float!
+  """
+  Net of the item.
+  """
+  lineTotal: Float!
+  unitWeight: Float
+}
+
+type WholesaleVatLine {
+  """
+  10 | 5 | exempt
+  """
+  rate: String!
+  taxableBase: Float!
+  vat: Float!
+}
+
+"""
+SIFEN totals (dSub* include VAT; dTotOpe = dSubExe + dSub5 + dSub10).
+"""
+type SifenTaxBreakdown {
+  dSubExe: Float!
+  dSub5: Float!
+  dSub10: Float!
+  dBaseGrav5: Float!
+  dBaseGrav10: Float!
+  dIVA5: Float!
+  dIVA10: Float!
+  dTotOpe: Float!
+}
+
+extend type Query {
+  """
+  A wholesale quote by its public uuid; null when unknown.
+  """
+  wholesaleQuote(uuid: String!): WholesaleQuote
+}
