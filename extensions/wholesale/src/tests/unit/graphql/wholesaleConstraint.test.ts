@@ -136,7 +136,11 @@ describeDb('storefront GraphQL Product.wholesaleConstraint (T-2.17)', () => {
 
   it('leaks no other wholesale type into the storefront schema', () => {
     const wholesaleTypes = Object.keys(schema.getTypeMap()).filter((name) => /^Wholesale/.test(name));
-    expect(wholesaleTypes).toEqual(['WholesaleProductConstraint']);
+    // WholesaleCartWarning (T-2.48) carries a code only (cartWarnings.test.ts).
+    expect(wholesaleTypes.sort()).toEqual(['WholesaleCartWarning', 'WholesaleProductConstraint']);
+    const warning = schema.getType('WholesaleCartWarning');
+    if (!isObjectType(warning)) throw new Error('WholesaleCartWarning is not an object type');
+    expect(Object.entries(warning.getFields()).map(([name, f]) => `${name}: ${String(f.type)}`)).toEqual(['code: String!']);
     const product = schema.getType('Product');
     if (!isObjectType(product)) throw new Error('Product is not an object type');
     expect(Object.keys(product.getFields()).filter((name) => /wholesale/i.test(name))).toEqual(['wholesaleConstraint']);

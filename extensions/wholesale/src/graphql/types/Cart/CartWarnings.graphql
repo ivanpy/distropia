@@ -1,0 +1,16 @@
+"""
+A warning about a wholesale cart. Carries a code only, never an amount.
+"""
+type WholesaleCartWarning {
+  """
+  MINIMUM_ORDER_NOT_MET | MIX_RULE_NOT_MET
+  """
+  code: String!
+}
+
+extend type Cart {
+  """
+  Non-numeric warnings for approved wholesale viewers; empty list otherwise.
+  """
+  wholesaleWarnings: [WholesaleCartWarning!]!
+}
