@@ -31,6 +31,8 @@ describeDb('Cart.wholesaleWarnings (T-2.48)', () => {
   const carts = new Map<string, { cartId: number; uuid: string }>();
   /** 100.000 base, tiers 1 → 0 %, 12 → 10 %; counts toward the mix. */
   let product: ProductFixture;
+  /** Line of `product` (tiers 1 → 0 %, 12 → 10 %). */
+  let lineId: number;
   /** Critical consumable on a line that does not count toward the mix. */
   let consumable: ProductFixture;
   let approved: CustomerFixture;
@@ -72,7 +74,8 @@ describeDb('Cart.wholesaleWarnings (T-2.48)', () => {
       ],
       { countsTowardMix: false }
     );
-    product = await insertProduct(pool, { lineId: line.lineId });
+    lineId = line.lineId;
+    product = await insertProduct(pool, { lineId });
     consumable = await insertProduct(pool, { lineId: consumables.lineId, isCriticalConsumable: true });
     approved = await insertCustomer(pool);
     retail = await insertCustomer(pool, { approved: false });
@@ -106,6 +109,25 @@ describeDb('Cart.wholesaleWarnings (T-2.48)', () => {
 
   it('returns an empty list for an empty cart', async () => {
     expect(await warnings(approved.customerId, [])).toEqual([]);
+  });
+
+  it('keeps the cart and returns no warning when the calculation fails', async () => {
+    // A negative weight makes calculateQuote throw on invalid product data.
+    const broken = await insertProduct(pool, { lineId, weight: -1 });
+    expect(await warnings(approved.customerId, [{ product: broken, qty: 1 }])).toEqual([]);
+  });
+
+  it('keeps the cart and returns no warning when the viewer re-read fails', async () => {
+    const cart = await insertCart(pool, approved.customerId, [{ product, qty: 1 }]);
+    carts.set(cart.uuid, cart);
+    const unavailable = { query: () => Promise.reject(new Error('database unavailable')) };
+    const data = await run<{ cart: { uuid: string; wholesaleWarnings: { code: string }[] } }>(
+      schema,
+      QUERY,
+      { pool: unavailable, customer: { customer_id: approved.customerId } },
+      { id: cart.uuid }
+    );
+    expect(data.cart).toEqual({ uuid: cart.uuid, wholesaleWarnings: [] });
   });
 
   it('returns an empty list to B2C and anonymous viewers, whatever the cart', async () => {
