@@ -364,6 +364,38 @@ describeDb('createQuote (T-2.21, T-2.22)', () => {
     expect(emitted).toEqual([]);
   });
 
+  it.each([
+    ['BEGIN fails', /^BEGIN$/],
+    ['BEGIN and ROLLBACK fail', /^(BEGIN|ROLLBACK)$/]
+  ])('releases the dedicated connection exactly once when %s', async (_label, failOn) => {
+    const customer = await insertCustomer(pool);
+    const cart = await insertCart(pool, customer.customerId, [{ product, qty: 60 }]);
+    let client: PoolClient | undefined;
+    const releases: unknown[] = [];
+    const acquire = async () => {
+      client = await failingAcquire(failOn)();
+      const release = client.release.bind(client);
+      client.release = (err?: Error | boolean) => {
+        releases.push(err);
+        release(err);
+      };
+      return client;
+    };
+    try {
+      await expect(
+        createQuote({ customerUuid: customer.uuid, cartUuid: cart.uuid, idempotencyKey: randomUUID() }, deps({ acquire }))
+      ).rejects.toThrow(/injected failure: BEGIN/);
+      expect(releases).toHaveLength(1);
+    } finally {
+      // Never leave the client checked out (the pool would not close).
+      if (client && releases.length === 0) {
+        client.release(true);
+      }
+    }
+    expect(await countQuotes(customer)).toBe(0);
+    expect(emitted).toEqual([]);
+  });
+
   it('refuses MINIMUM_ORDER_NOT_MET before any insert: no row, no quote number, no event', async () => {
     const customer = await insertCustomer(pool);
     // 12 × 90.000 = 1.080.000 < 5.000.000.

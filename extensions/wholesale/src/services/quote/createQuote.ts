@@ -214,6 +214,20 @@ async function calculateCartQuote(
   return { cartId, calculation, lineNames, critical };
 }
 
+/**
+ * `rollback` releases the connection only once ROLLBACK succeeds. When it
+ * fails (broken connection, BEGIN never ran) the client is released with the
+ * error so the pool discards it instead of leaking it.
+ */
+async function rollbackAndRelease(connection: PoolClient): Promise<void> {
+  try {
+    await rollback(connection);
+  } catch (rollbackError) {
+    logError(rollbackError);
+    connection.release(rollbackError instanceof Error ? rollbackError : true);
+  }
+}
+
 export async function createQuote(
   input: CreateQuoteInput,
   dependencies: CreateQuoteDependencies = {}
@@ -235,9 +249,11 @@ export async function createQuote(
   const requestIp = input.requestIp ?? null;
 
   const connection = await acquire();
-  await startTransaction(connection);
   let created: QuoteSummary;
   try {
+    // First statement on the connection (core release trap), inside the try
+    // so a failing BEGIN still releases it.
+    await startTransaction(connection);
     const customer = await lockedCustomer(connection, input.customerUuid);
 
     const { rows: lock } = await connection.query<{ locked: boolean }>(
@@ -375,7 +391,7 @@ export async function createQuote(
     await commit(connection);
     created = summary;
   } catch (e) {
-    await rollback(connection).catch(() => undefined);
+    await rollbackAndRelease(connection);
     throw e;
   }
 
