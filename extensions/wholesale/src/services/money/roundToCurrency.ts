@@ -5,8 +5,10 @@
  * (PYG = 0). Halves round away from zero, so negative amounts mirror
  * positive ones. Binary floating-point noise from multiplications
  * (`1.005 * 100 = 100.49999999999999`) is absorbed by reading the scaled
- * value at 15 significant digits before rounding, which is exact for every
- * amount a `numeric(14,2)` column can hold.
+ * value at 15 significant digits before rounding. That is exact while the
+ * integer digits plus `decimals` stay within 15 — every `numeric(14,2)`
+ * amount at 0 or 2 decimals; larger scales lose the guarantee for amounts
+ * of 10^(15 − decimals) and above.
  *
  * Pure: no I/O.
  */
