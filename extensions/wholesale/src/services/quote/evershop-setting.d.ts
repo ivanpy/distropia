@@ -9,3 +9,16 @@ declare module '@evershop/evershop/setting/services' {
    */
   export function getWeightUnit(): string;
 }
+
+declare module '@evershop/evershop/setting/services' {
+  /**
+   * `packages/evershop/src/modules/setting/services/setting.ts` — store
+   * display time zone (IANA name); the year of a quote number is taken in it.
+   */
+  export function getStoreTimezone(): string;
+}
+
+declare module '@evershop/evershop/lib/log' {
+  /** `packages/evershop/src/lib/log/logger.js` — logs an error (no `.d.ts` shipped). */
+  export function error(e: unknown): void;
+}
