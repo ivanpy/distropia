@@ -225,4 +225,14 @@ Phase 2 of the SDD (`docs/sdd-wholesale/04_planificacion_y_tareas/`). ADR-06 (pr
 
 ## Next step
 
-W7 (anti-bot: T-2.23 … T-2.28) after the W6b review; the rate-limit re-check plugs into `createQuote`'s `underLock` hook. Then W8 wires `POST /api/wholesale/request-quote` to `createQuote` + `toRequestQuoteResponse` (`QuoteError.status`/`code`). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 … 1.1.2.
+W7 (anti-bot: T-2.23 … T-2.28); the rate-limit re-check plugs into `createQuote`'s `underLock` hook. Then W8 wires `POST /api/wholesale/request-quote` to `createQuote` + `toRequestQuoteResponse` (`QuoteError.status`/`code`). Pending live HTTP check of W3/W4 endpoints after `npm run dev` applies 1.1.0 … 1.1.2.
+
+## Resume on another machine (handoff 2026-10-17)
+
+- Branch `feat/wholesale-phase-2` is pushed to remote `distropia` (`https://github.com/ivanpy/distropia`); it is stacked on `feat/wholesale-phase-1` and contains its commits. `git fetch distropia && git switch feat/wholesale-phase-2`.
+- State: W1 … W6c done; every slice reviewed and acknowledged up to `0b8f9b9f`. W6c (`ded62fad` … `c2380010`) assessed medium `under_budget`, so its review is deferred into the next slice: assess W7 with `--base-ref 0b8f9b9f --committed-only`.
+- Setup: `npm install` at the root; create `.env` by hand (never committed; DB credentials, `WHATSAPP_MOCK_ENABLED=true` for dev). The DB user needs CREATEDB for the `createQuote` concurrency suite (throw-away database). `npm run dev` compiles the extension and applies pending migrations (dev DB was still on 1.0.0 → 1.1.0, 1.1.1, 1.1.2 will apply).
+- Checks: `npm run tsc --prefix extensions/wholesale`; `npm run build --prefix extensions/wholesale`; `ALLOW_CONFIG_MUTATIONS=true NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js extensions/wholesale --runInBand` (776/776; parallel runs flake on 5 s `beforeAll` timeouts in DB suites).
+- Engram memory: chunks exported to `.engram/` with `engram sync`; on the other machine run `engram sync --import` (or `engram import`) from the repo root so the `distropia` project memory is available.
+- Open points carried forward: W8 `note` has no DB column; post-commit emit failure has no outbox; mix warning with excluded lines (SDD silent); D-P2-1 quote → customer FK still open; chain-PR strategy (`ask-on-risk`) to be asked before any PR.
+- Unrelated: `packages/create-evershop-app/index.js` shows as modified only because of line endings (empty content diff); it is intentionally not committed.
